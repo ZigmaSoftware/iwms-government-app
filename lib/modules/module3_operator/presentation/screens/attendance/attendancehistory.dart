@@ -1,459 +1,439 @@
-import 'package:flutter_map/flutter_map.dart';
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
-import 'package:table_calendar/table_calendar.dart';
-import 'package:intl/intl.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:http/http.dart' as http;
-import 'package:latlong2/latlong.dart';
+import 'package:intl/intl.dart';
 import 'package:iwms_citizen_app/core/api_config.dart';
 import 'package:iwms_citizen_app/core/env.dart';
 import 'package:iwms_citizen_app/core/network/authorized_dio.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:table_calendar/table_calendar.dart';
+
+const Color _kHistoryBg = Color(0xFFF6F7FB);
+const Color _kHistorySurface = Colors.white;
+const Color _kHistorySurfaceAlt = Color(0xFFF1F4FA);
+const Color _kHistoryPrimary = Color(0xFF14224A);
+const Color _kHistoryText = Color(0xFF0B1F3A);
+const Color _kHistoryMuted = Color(0xFF6B7C93);
+const Color _kHistoryBorder = Color(0xFFDCE3EF);
+
+const Color _kStatusPresent = Color(0xFF1D4ED8);
+const Color _kStatusPending = Color(0xFFD97706);
+const Color _kStatusAbsent = Color(0xFFDC2626);
+const Color _kStatusLeave = Color(0xFF7C3AED);
+const Color _kStatusPermission = Color(0xFF0F8A58);
+
+enum AttendanceStatusType {
+  present,
+  pendingOut,
+  absent,
+  leave,
+  permission,
+  none
+}
+
+class AttendanceDayRecord {
+  const AttendanceDayRecord({
+    required this.date,
+    required this.statusLabel,
+    required this.statusType,
+    required this.inTime,
+    required this.outTime,
+    required this.checkInLatitude,
+    required this.checkInLongitude,
+    required this.checkOutLatitude,
+    required this.checkOutLongitude,
+    required this.checkInImage,
+    required this.checkOutImage,
+    required this.workedDuration,
+    required this.checkInAt,
+    required this.checkOutAt,
+  });
+
+  final DateTime date;
+  final String statusLabel;
+  final AttendanceStatusType statusType;
+  final String inTime;
+  final String outTime;
+  final String checkInLatitude;
+  final String checkInLongitude;
+  final String checkOutLatitude;
+  final String checkOutLongitude;
+  final String checkInImage;
+  final String checkOutImage;
+  final String workedDuration;
+  final String checkInAt;
+  final String checkOutAt;
+
+  bool get hasPunchData => inTime.isNotEmpty || outTime.isNotEmpty;
+
+  bool get hasCoordinates {
+    final inLat = double.tryParse(checkInLatitude) ?? 0;
+    final inLng = double.tryParse(checkInLongitude) ?? 0;
+    final outLat = double.tryParse(checkOutLatitude) ?? 0;
+    final outLng = double.tryParse(checkOutLongitude) ?? 0;
+    return (inLat != 0 || inLng != 0) || (outLat != 0 || outLng != 0);
+  }
+
+  static AttendanceDayRecord fromJson(Map<String, dynamic> json) {
+    final parsedDate =
+        DateFormat('dd/MMMM/yyyy', 'en_US').parseStrict('${json['date']}');
+    final statusText = (json['day_status'] ?? '').toString().trim();
+    return AttendanceDayRecord(
+      date: DateTime(parsedDate.year, parsedDate.month, parsedDate.day),
+      statusLabel: statusText.isEmpty ? 'Absent' : statusText,
+      statusType: _statusTypeForLabel(statusText),
+      inTime: (json['in_time'] ?? '').toString(),
+      outTime: (json['out_time'] ?? '').toString(),
+      checkInLatitude: (json['in_latitude'] ?? '').toString(),
+      checkInLongitude: (json['in_longitude'] ?? '').toString(),
+      checkOutLatitude: (json['out_latitude'] ?? '').toString(),
+      checkOutLongitude: (json['out_longitude'] ?? '').toString(),
+      checkInImage:
+          (json['in_image_path'] ?? '').toString().replaceAll('\\', '/'),
+      checkOutImage:
+          (json['out_image_path'] ?? '').toString().replaceAll('\\', '/'),
+      workedDuration: (json['worked_duration'] ?? '').toString(),
+      checkInAt: (json['check_in_at'] ?? '').toString(),
+      checkOutAt: (json['check_out_at'] ?? '').toString(),
+    );
+  }
+}
+
+AttendanceStatusType _statusTypeForLabel(String raw) {
+  final status = raw.trim().toLowerCase();
+  switch (status) {
+    case 'present':
+      return AttendanceStatusType.present;
+    case 'pending out':
+      return AttendanceStatusType.pendingOut;
+    case 'leave':
+    case 'on leave':
+      return AttendanceStatusType.leave;
+    case 'permission':
+      return AttendanceStatusType.permission;
+    case 'absent':
+      return AttendanceStatusType.absent;
+    default:
+      return AttendanceStatusType.none;
+  }
+}
+
+Color _statusColor(AttendanceStatusType type) {
+  switch (type) {
+    case AttendanceStatusType.present:
+      return _kStatusPresent;
+    case AttendanceStatusType.pendingOut:
+      return _kStatusPending;
+    case AttendanceStatusType.absent:
+      return _kStatusAbsent;
+    case AttendanceStatusType.leave:
+      return _kStatusLeave;
+    case AttendanceStatusType.permission:
+      return _kStatusPermission;
+    case AttendanceStatusType.none:
+      return _kHistoryBorder;
+  }
+}
+
+String _statusLabel(AttendanceStatusType type) {
+  switch (type) {
+    case AttendanceStatusType.present:
+      return 'Present';
+    case AttendanceStatusType.pendingOut:
+      return 'Pending Out';
+    case AttendanceStatusType.absent:
+      return 'Absent';
+    case AttendanceStatusType.leave:
+      return 'Leave';
+    case AttendanceStatusType.permission:
+      return 'Permission';
+    case AttendanceStatusType.none:
+      return 'No record';
+  }
+}
 
 class AttendanceDetailPage extends StatefulWidget {
-  final Map<String, dynamic> record;
-  final DateTime selectedDate;
-
   const AttendanceDetailPage({
     super.key,
     required this.record,
     required this.selectedDate,
   });
 
+  final AttendanceDayRecord record;
+  final DateTime selectedDate;
+
   @override
   State<AttendanceDetailPage> createState() => _AttendanceDetailPageState();
 }
 
 class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
-  String checkInLocation = "Fetching location...";
-  String checkOutLocation = "Fetching location...";
-  late final LatLng checkInLatLng;
-  late final LatLng checkOutLatLng;
-  late final LatLng mapCenter;
-  String? checkInResolved;
-  String? checkOutResolved;
+  String _checkInLocation = 'Location unavailable';
+  String _checkOutLocation = 'Location unavailable';
+  String? _checkInResolved;
+  String? _checkOutResolved;
 
-  @override
-  // void initState() {
-  //   super.initState();
-  //   _fetchLocation();
-  // }
+  late final LatLng _checkInLatLng;
+  late final LatLng _checkOutLatLng;
+  late final LatLng _mapCenter;
+
   @override
   void initState() {
     super.initState();
+    final inLat = double.tryParse(widget.record.checkInLatitude) ?? 0;
+    final inLng = double.tryParse(widget.record.checkInLongitude) ?? 0;
+    final outLat = double.tryParse(widget.record.checkOutLatitude) ?? 0;
+    final outLng = double.tryParse(widget.record.checkOutLongitude) ?? 0;
 
-    final inLat =
-        double.tryParse(widget.record['check_in_latitude'] ?? '0.0') ?? 0.0;
-    final inLon =
-        double.tryParse(widget.record['check_in_longitude'] ?? '0.0') ?? 0.0;
-    final outLat =
-        double.tryParse(widget.record['check_out_latitude'] ?? '0.0') ?? 0.0;
-    final outLon =
-        double.tryParse(widget.record['check_out_longitude'] ?? '0.0') ?? 0.0;
+    _checkInLatLng = LatLng(inLat, inLng);
+    _checkOutLatLng = LatLng(outLat, outLng);
+    _mapCenter = _resolveCenter(inLat, inLng, outLat, outLng);
 
-    checkInLatLng = LatLng(inLat, inLon);
-    checkOutLatLng = LatLng(outLat, outLon);
-
-    if (inLat != 0 && outLat != 0) {
-      // Center between two points
-      mapCenter = LatLng((inLat + outLat) / 2, (inLon + outLon) / 2);
-    } else {
-      mapCenter = inLat != 0 ? checkInLatLng : checkOutLatLng;
-    }
-
-    _fetchLocation();
     _resolveImages();
+    _fetchLocation();
+  }
+
+  LatLng _resolveCenter(
+      double inLat, double inLng, double outLat, double outLng) {
+    if (inLat != 0 && outLat != 0) {
+      return LatLng((inLat + outLat) / 2, (inLng + outLng) / 2);
+    }
+    if (inLat != 0 || inLng != 0) {
+      return LatLng(inLat, inLng);
+    }
+    if (outLat != 0 || outLng != 0) {
+      return LatLng(outLat, outLng);
+    }
+    return const LatLng(11.1271, 78.6569);
   }
 
   Future<void> _resolveImages() async {
-    final rawCheckIn = (widget.record['check_in_image'] ?? '').replaceAll(
-      "\\",
-      "/",
-    );
-    final rawCheckOut = (widget.record['check_out_image'] ?? '').replaceAll(
-      "\\",
-      "/",
-    );
-
-    checkInResolved = await resolveAttendanceImage(rawCheckIn);
-    checkOutResolved = await resolveAttendanceImage(rawCheckOut);
-
-    setState(() {});
+    _checkInResolved =
+        await _resolveAttendanceImage(widget.record.checkInImage);
+    _checkOutResolved =
+        await _resolveAttendanceImage(widget.record.checkOutImage);
+    if (mounted) setState(() {});
   }
 
-  Future<String?> resolveAttendanceImage(String rawPath) async {
+  Future<String?> _resolveAttendanceImage(String rawPath) async {
     if (rawPath.isEmpty) return null;
-
-    final normalizedPath = rawPath.replaceAll("\\", "/");
-    if (normalizedPath.startsWith("http://") ||
-        normalizedPath.startsWith("https://")) {
-      return normalizedPath;
+    final normalized = rawPath.replaceAll('\\', '/');
+    if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
+      return normalized;
     }
-
-    if (normalizedPath.startsWith("/media/")) {
-      return "$kOperatorProfileBaseUrl$normalizedPath";
+    if (normalized.startsWith('/media/')) {
+      return '$kOperatorProfileBaseUrl$normalized';
     }
-
-    if (normalizedPath.startsWith("media/")) {
-      return "$kOperatorProfileBaseUrl/$normalizedPath";
+    if (normalized.startsWith('media/')) {
+      return '$kOperatorProfileBaseUrl/$normalized';
     }
-
-    return "$kOperatorProfileBaseUrl/$normalizedPath";
+    return '$kOperatorProfileBaseUrl/$normalized';
   }
 
   Future<void> _fetchLocation() async {
-    await _fetchSingleLocation(
-      double.tryParse(widget.record['check_in_latitude'] ?? '0') ?? 0.0,
-      double.tryParse(widget.record['check_in_longitude'] ?? '0') ?? 0.0,
-      isCheckIn: true,
-    );
-    await _fetchSingleLocation(
-      double.tryParse(widget.record['check_out_latitude'] ?? '0') ?? 0.0,
-      double.tryParse(widget.record['check_out_longitude'] ?? '0') ?? 0.0,
-      isCheckIn: false,
-    );
+    await _fetchSingleLocation(_checkInLatLng, isCheckIn: true);
+    await _fetchSingleLocation(_checkOutLatLng, isCheckIn: false);
   }
 
   Future<void> _fetchSingleLocation(
-    double lat,
-    double lon, {
+    LatLng point, {
     required bool isCheckIn,
   }) async {
-    if (lat == 0.0 && lon == 0.0) {
-      setState(() {
-        if (isCheckIn) {
-          checkInLocation = "Location not available";
-        } else {
-          checkOutLocation = "Location not available";
-        }
-      });
-      return;
-    }
-
+    if (point.latitude == 0.0 && point.longitude == 0.0) return;
     final url =
-        "https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lon";
-
+        'https://nominatim.openstreetmap.org/reverse?format=json&lat=${point.latitude}&lon=${point.longitude}';
     try {
       final response = await http.get(Uri.parse(url));
-      final jsonData = json.decode(response.body);
-      final address = jsonData['address'];
-
+      final jsonData = json.decode(response.body) as Map<String, dynamic>;
+      final address = jsonData['address'] as Map<String, dynamic>?;
       final formatted = address != null
-          ? "${address['suburb'] ?? ''} ${address['city'] ?? ''}".trim()
-          : jsonData['display_name'] ?? 'Unknown';
-
+          ? '${address['suburb'] ?? ''} ${address['city'] ?? address['town'] ?? ''}'
+              .trim()
+          : (jsonData['display_name']?.toString() ?? 'Unknown');
+      if (!mounted) return;
       setState(() {
         if (isCheckIn) {
-          checkInLocation = formatted;
+          _checkInLocation = formatted.isEmpty ? 'Unknown' : formatted;
         } else {
-          checkOutLocation = formatted;
+          _checkOutLocation = formatted.isEmpty ? 'Unknown' : formatted;
         }
       });
-    } catch (e) {
-      print("Location fetch error: $e");
-    }
+    } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
-    final selectedDate = widget.selectedDate;
-
-    return SafeArea(
-      child: Scaffold(
-        backgroundColor: Color(0xFFF6F7FB),
-        body: Column(
-          children: [
-            // ===========================
-            // 🌍 MAP SECTION (40% Height)
-            // ===========================
-            SizedBox(
-              height: MediaQuery.of(context).size.height * 0.40,
-              child: Stack(
-                children: [
-                  FlutterMap(
+    final statusColor = _statusColor(widget.record.statusType);
+    return Scaffold(
+      backgroundColor: _kHistoryBg,
+      appBar: AppBar(
+        backgroundColor: _kHistoryPrimary,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        title: const Text('Attendance details'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+        children: [
+          _HistorySurface(
+            padding: const EdgeInsets.all(18),
+            child: Row(
+              children: [
+                _StatusDot(
+                  color: statusColor,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        DateFormat('dd').format(widget.selectedDate),
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Text(
+                        DateFormat('EEE')
+                            .format(widget.selectedDate)
+                            .toUpperCase(),
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        DateFormat('dd MMMM yyyy').format(widget.selectedDate),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: _kHistoryText,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        widget.record.statusLabel,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: statusColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (widget.record.hasCoordinates)
+            _HistorySurface(
+              padding: EdgeInsets.zero,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: SizedBox(
+                  height: 220,
+                  child: FlutterMap(
                     options: MapOptions(
-                      initialCenter: mapCenter,
+                      initialCenter: _mapCenter,
                       initialZoom: 15,
                       interactionOptions: const InteractionOptions(
-                        flags: InteractiveFlag.none,
+                        flags: InteractiveFlag.pinchZoom |
+                            InteractiveFlag.drag |
+                            InteractiveFlag.doubleTapZoom,
                       ),
                     ),
                     children: [
                       TileLayer(
                         urlTemplate:
-                            "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-                        subdomains: ['a', 'b', 'c'],
+                            'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        subdomains: const ['a', 'b', 'c'],
                       ),
-
-                      // ======================
-                      // MARKERS WITH OUTLINE
-                      // ======================
                       MarkerLayer(
                         markers: [
-                          if (checkInLatLng.latitude != 0)
+                          if (_checkInLatLng.latitude != 0 ||
+                              _checkInLatLng.longitude != 0)
                             Marker(
-                              point: checkInLatLng,
-                              width: 60,
-                              height: 60,
-                              child: _buildMarkerCircle(),
+                              point: _checkInLatLng,
+                              width: 44,
+                              height: 44,
+                              child: _MapPin(color: _kStatusPresent),
                             ),
-                          if (checkOutLatLng.latitude != 0)
+                          if (_checkOutLatLng.latitude != 0 ||
+                              _checkOutLatLng.longitude != 0)
                             Marker(
-                              point: checkOutLatLng,
-                              width: 60,
-                              height: 60,
-                              child: _buildMarkerCircle(),
+                              point: _checkOutLatLng,
+                              width: 44,
+                              height: 44,
+                              child: _MapPin(color: _kStatusPending),
                             ),
                         ],
                       ),
                     ],
                   ),
-
-                  // ======================
-                  // HEADER OVERLAY
-                  // ======================
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      padding: EdgeInsets.fromLTRB(12, 12, 12, 10),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Color(0xFF1B5E20),
-                            Color(0xFF1B5E20),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            blurRadius: 8,
-                            color: Colors.black26,
-                          )
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          InkWell(
-                            onTap: () => Navigator.pop(context),
-                            child: Container(
-                              padding: EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Icon(Icons.arrow_back,
-                                  color: Colors.white, size: 18),
-                            ),
-                          ),
-                          SizedBox(width: 12),
-                          Text(
-                            "Attendance Summary",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            SizedBox(height: 12),
-
-            // ==========================
-            // LOCATION INFO BOX – Glass
-            // ==========================
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Container(
-                padding: EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Color(0xFF1B5E20),
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      blurRadius: 10,
-                      color: Colors.black12,
-                    )
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _infoText("PUNCH IN", checkInLocation),
-                    SizedBox(height: 6),
-                    _infoText("PUNCH OUT", checkOutLocation),
-                  ],
                 ),
               ),
             ),
-
-            SizedBox(height: 16),
-
-            // ==========================
-            // DATE DISPLAY
-            // ==========================
-            Text(
-              DateFormat("dd MMMM yyyy | EEEE")
-                  .format(selectedDate)
-                  .toUpperCase(),
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 15,
-                letterSpacing: 0.5,
-                color: Colors.grey[800],
+          if (widget.record.hasCoordinates) const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _HistoryMetricCard(
+                  title: 'Clock In',
+                  value: widget.record.inTime.isEmpty
+                      ? '--:--'
+                      : widget.record.inTime,
+                  subtitle: _checkInLocation,
+                  imageUrl: _checkInResolved,
+                  accent: _kStatusPresent,
+                ),
               ),
-            ),
-
-            SizedBox(height: 20),
-
-            // ==========================
-            // CLOCK IN / OUT ROW
-            // ==========================
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              const SizedBox(width: 12),
+              Expanded(
+                child: _HistoryMetricCard(
+                  title: 'Clock Out',
+                  value: widget.record.outTime.isEmpty
+                      ? '--:--'
+                      : widget.record.outTime,
+                  subtitle: _checkOutLocation,
+                  imageUrl: _checkOutResolved,
+                  accent: _kStatusPending,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _HistorySurface(
+            padding: const EdgeInsets.all(16),
+            child: Row(
               children: [
-                _buildClockCard("Clock In",
-                    widget.record['check_in_time'] ?? "--:--", checkInResolved),
-                _buildClockCard(
-                    "Clock Out",
-                    widget.record['check_out_time'] ?? "--:--",
-                    checkOutResolved),
+                Expanded(
+                  child: _InfoPill(
+                    label: 'Worked',
+                    value: widget.record.workedDuration.isEmpty
+                        ? '--:--:--'
+                        : widget.record.workedDuration,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _InfoPill(
+                    label: 'Status',
+                    value: widget.record.statusLabel,
+                    accent: statusColor,
+                  ),
+                ),
               ],
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-// =============================
-// STYLISH PUNCH CARD UI
-// =============================
-  Widget _buildClockCard(String title, String time, String? imgUrl) {
-    return Container(
-      width: 130,
-      padding: EdgeInsets.symmetric(vertical: 14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 8,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          CircleAvatar(
-            radius: 32,
-            backgroundColor: Colors.grey.shade200,
-            backgroundImage: imgUrl != null
-                ? NetworkImage(imgUrl)
-                : AssetImage("assets/images/default_user.png") as ImageProvider,
-          ),
-          SizedBox(height: 10),
-          Text(
-            title.toUpperCase(),
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.grey[600],
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.4,
-            ),
-          ),
-          Text(
-            time,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1B5E20),
-            ),
-          )
-        ],
-      ),
-    );
-  }
-
-// =============================
-// MARKER AVATAR STYLE
-// =============================
-  Widget _buildMarkerCircle() {
-    return Container(
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 3),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black26,
-            blurRadius: 8,
-            offset: Offset(0, 3),
-          ),
-        ],
-      ),
-      child: CircleAvatar(
-        radius: 28,
-        backgroundImage: AssetImage("assets/images/image.png"),
-      ),
-    );
-  }
-
-// =============================
-// TEXT BLOCK (Punch IN/OUT info)
-// =============================
-  Widget _infoText(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: Colors.white70,
-            fontSize: 11,
-            letterSpacing: 1,
-          ),
-        ),
-        SizedBox(height: 2),
-        Text(
-          value,
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 14,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildClockBox(String label, String time, String? imgUrl) {
-    return SizedBox(
-      height: 120,
-      child: Column(
-        children: [
-          CircleAvatar(
-            radius: 36,
-            backgroundImage: imgUrl != null
-                ? NetworkImage(imgUrl)
-                : const AssetImage('assets/images/default_user.png')
-                    as ImageProvider,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label.toUpperCase(),
-            style: const TextStyle(fontSize: 12, color: Colors.grey),
-          ),
-          Text(
-            time,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
         ],
       ),
@@ -462,8 +442,12 @@ class _AttendanceDetailPageState extends State<AttendanceDetailPage> {
 }
 
 class AttendanceHistory extends StatefulWidget {
+  const AttendanceHistory({
+    super.key,
+    required this.empId,
+  });
+
   final String empId;
-  const AttendanceHistory({super.key, required this.empId});
 
   @override
   State<AttendanceHistory> createState() => _AttendanceHistoryState();
@@ -471,65 +455,25 @@ class AttendanceHistory extends StatefulWidget {
 
 class _AttendanceHistoryState extends State<AttendanceHistory> {
   DateTime _focusedDay = DateTime.now();
-  DateTime? _rangeStart;
-  DateTime? _rangeEnd;
   DateTime? _selectedDay;
-  RangeSelectionMode _rangeSelectionMode = RangeSelectionMode.toggledOn;
-
-  Map<DateTime, Map<String, String>> attendanceMap = {};
-  Map<DateTime, String> holidayMap = {};
-  bool isLoading = false;
-  bool _isValidAttendance(Map<String, String> data) {
-    return (data['in'] != null && data['in']!.trim().isNotEmpty) ||
-        (data['out'] != null && data['out']!.trim().isNotEmpty);
-  }
-
-  DateTime normalizeDate(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
+  bool _isLoading = false;
+  final Map<DateTime, AttendanceDayRecord> _attendanceMap = {};
 
   @override
   void initState() {
     super.initState();
-    fetchAttendanceData();
+    _selectedDay = DateUtils.dateOnly(DateTime.now());
+    _fetchAttendanceData();
   }
 
-  Future<void> fetchHolidays() async {
-    final url = Uri.parse(
-      "https://zigmaglobal.in/zigma_desk_app_updated/getholidays.php",
-    );
+  DateTime _normalizeDate(DateTime date) => DateUtils.dateOnly(date);
 
-    try {
-      final response = await http.post(url, body: {
-        'zigma_id': widget.empId,
-        'from_date': DateFormat('yyyy-MM-01').format(_focusedDay),
-        'to_date': DateFormat('yyyy-MM-dd')
-            .format(DateTime(_focusedDay.year, _focusedDay.month + 1, 0)),
-      });
-
-      final data = json.decode(response.body);
-
-      if (data['status'] == 'success') {
-        for (var item in data['data']) {
-          if (item['date'] != null) {
-            final rawDate = DateFormat("d MMM y").parse(item['date']);
-            final date = normalizeDate(rawDate);
-
-            holidayMap[date] = item['reason'] ?? item['status'] ?? 'Holiday';
-          }
-        }
-        setState(() {});
-      }
-    } catch (e) {
-      print("❌ Error fetching holidays: $e");
-    }
-  }
-
-  Future<void> fetchAttendanceData() async {
-    setState(() => isLoading = true);
-
+  Future<void> _fetchAttendanceData() async {
+    setState(() => _isLoading = true);
     try {
       final dio = await authorizedDio();
       final response = await dio.get(
-        '${ApiConfig.desktopBase}attendance-list/',
+        '${ApiConfig.attendanceBase}daily-attendance/',
         queryParameters: {
           'emp_id': widget.empId,
           'month': _focusedDay.month,
@@ -537,401 +481,565 @@ class _AttendanceHistoryState extends State<AttendanceHistory> {
         },
       );
       final data = response.data;
-
-      if (data is Map && data['records'] != null && data['records'] is List) {
-        // ✅ Typed correctly
-        Map<DateTime, Map<String, String>> parsed = {};
-
-        for (var item in data['records']) {
-          final raw =
-              DateFormat("dd/MMMM/yyyy", "en_US").parseStrict(item['date']);
-          final date = DateTime(raw.year, raw.month, raw.day);
-
-          // ✅ FORCE everything to String and type the map
-          final Map<String, String> mapEntry = {
-            "in": (item['in_time'] ?? '').toString(),
-            "out": (item['out_time'] ?? '').toString(),
-            "check_in_latitude": (item['in_latitude'] ?? '').toString(),
-            "check_in_longitude": (item['in_longitude'] ?? '').toString(),
-            "check_out_latitude": (item['out_latitude'] ?? '').toString(),
-            "check_out_longitude": (item['out_longitude'] ?? '').toString(),
-            "check_in_image": ((item['in_image_path'] ?? '').toString())
-                .replaceAll("\\", "/"),
-            "check_out_image": ((item['out_image_path'] ?? '').toString())
-                .replaceAll("\\", "/"),
-            "total_worked_time":
-                (item['total_worked_time'] ?? '00:00').toString(),
-            "day_status": (item['day_status'] ?? '').toString(),
-          };
-
-          // ✅ Now this matches Map<String, String>
-          parsed[date] = mapEntry;
+      final parsed = <DateTime, AttendanceDayRecord>{};
+      if (data is Map && data['records'] is List) {
+        for (final item in (data['records'] as List).whereType<Map>()) {
+          final record =
+              AttendanceDayRecord.fromJson(Map<String, dynamic>.from(item));
+          parsed[_normalizeDate(record.date)] = record;
         }
-
-        setState(() {
-          attendanceMap = parsed;
-          isLoading = false;
-        });
-      } else {
-        setState(() => isLoading = false);
       }
-    } catch (e) {
-      print("❌ API Error: $e");
-      setState(() => isLoading = false);
+      if (!mounted) return;
+      setState(() {
+        _attendanceMap
+          ..clear()
+          ..addAll(parsed);
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
     }
   }
 
-  Future<void> fetchLeavePermissionTickets() async {
-    final url = Uri.parse(
-        "https://zigmaglobal.in/zigma_desk_app_updated/get_leave_status.php");
+  AttendanceDayRecord? _recordFor(DateTime day) =>
+      _attendanceMap[_normalizeDate(day)];
 
-    final response = await http.post(url, body: {
-      'zigma_id': widget.empId,
-      'from_date': DateFormat('yyyy-MM-01').format(_focusedDay),
-      'to_date': DateFormat('yyyy-MM-dd')
-          .format(DateTime(_focusedDay.year, _focusedDay.month + 1, 0)),
-    });
+  AttendanceStatusType _statusFor(DateTime day) {
+    final normalized = _normalizeDate(day);
+    final record = _recordFor(normalized);
+    if (record != null) return record.statusType;
 
-    final data = json.decode(response.body);
+    final today = _normalizeDate(DateTime.now());
+    if (normalized.isBefore(today)) return AttendanceStatusType.absent;
+    return AttendanceStatusType.none;
+  }
 
-    if (data['status'] == 'success') {
-      for (var item in data['data']) {
-        final rawDate = DateFormat("d MMM y").parse(item['date']);
-        final date = normalizeDate(rawDate);
+  String _labelForDay(DateTime day) {
+    final record = _recordFor(day);
+    if (record != null) return record.statusLabel;
+    return _statusLabel(_statusFor(day));
+  }
 
-        attendanceMap[date] ??= {};
+  int _daysInFocusedMonth() =>
+      DateUtils.getDaysInMonth(_focusedDay.year, _focusedDay.month);
 
-        if (item['type'] == "Permission") {
-          attendanceMap[date]!['permission'] = item['status'];
-          attendanceMap[date]!['reason'] = item['reason'] ?? '';
-        } else {
-          attendanceMap[date]!['leave'] = item['status'];
-          attendanceMap[date]!['leave_type'] = item['type'];
-          attendanceMap[date]!['reason'] = item['reason'] ?? '';
-        }
-      }
-      setState(() {});
+  int _countStatus(AttendanceStatusType type) {
+    var count = 0;
+    for (var i = 1; i <= _daysInFocusedMonth(); i++) {
+      final day = DateTime(_focusedDay.year, _focusedDay.month, i);
+      if (_statusFor(day) == type) count++;
     }
+    return count;
+  }
+
+  List<AttendanceDayRecord> get _sortedRecords {
+    final list = _attendanceMap.values.toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    return list;
+  }
+
+  AttendanceDayRecord? get _selectedRecord =>
+      _selectedDay == null ? null : _recordFor(_selectedDay!);
+
+  void _onDaySelected(DateTime selectedDay, DateTime focusedDay) {
+    setState(() {
+      _selectedDay = _normalizeDate(selectedDay);
+      _focusedDay = focusedDay;
+    });
+  }
+
+  void _onPageChanged(DateTime focusedDay) {
+    setState(() {
+      _focusedDay = focusedDay;
+      final candidate = DateTime(focusedDay.year, focusedDay.month, 1);
+      _selectedDay = _selectedDay != null &&
+              _selectedDay!.year == focusedDay.year &&
+              _selectedDay!.month == focusedDay.month
+          ? _selectedDay
+          : candidate;
+    });
+    _fetchAttendanceData();
   }
 
   @override
   Widget build(BuildContext context) {
-    List<Widget> details = [];
+    final selected = _selectedDay ?? _normalizeDate(DateTime.now());
+    final selectedStatus = _statusFor(selected);
+    final selectedRecord = _selectedRecord;
 
-    if (_rangeStart != null) {
-      final start = _rangeStart!;
-      final end = _rangeEnd ?? _rangeStart!;
-
-      final days = List.generate(
-        end.difference(start).inDays + 1,
-        (i) => start.add(Duration(days: i)),
-      );
-
-      // for (final day in days) {
-      //   final data = attendanceMap[normalizeDate(day)];
-
-      //  if (_isValidAttendance(data!)) {
-      //     details.add(_buildDetailCard(day, data));
-      //   } else {
-      //     details.add(_buildAbsentCard(day));
-      //   }
-      // }
-      for (final day in days) {
-        final date = normalizeDate(day);
-        final data = attendanceMap[date] ?? {};
-
-        if (_isValidAttendance(data)) {
-          details.add(_buildDetailCard(day, data));
-        } else {
-          details.add(_buildAbsentCard(day));
-        }
-      }
-    }
-
-    return SafeArea(
-      child: Scaffold(
-        backgroundColor: Color(0xFFF5F6FA),
-        appBar: PreferredSize(
-          preferredSize: Size.fromHeight(52),
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Color(0xFF4CAF50),
-                  Color(0xFF66BB6A),
-                ],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black12.withOpacity(0.15),
-                  blurRadius: 6,
-                ),
-              ],
-            ),
-            child: AppBar(
-              backgroundColor: Color(0xFF1B5E20),
-              elevation: 0,
-              centerTitle: true,
-              title: Text(
-                "Attendance History",
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-        ),
-        body: isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
-                child: Column(
-                  children: [
-                    SizedBox(
-                      height: 5,
+    return Scaffold(
+      backgroundColor: _kHistoryBg,
+      appBar: AppBar(
+        backgroundColor: _kHistoryPrimary,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        title: const Text('Attendance History'),
+      ),
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: _kHistoryPrimary))
+          : RefreshIndicator(
+              color: _kHistoryPrimary,
+              onRefresh: _fetchAttendanceData,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
+                children: [
+                  _HistorySurface(
+                    padding: const EdgeInsets.all(14),
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 10,
+                      children: const [
+                        _LegendItem(color: _kStatusPresent, label: 'Present'),
+                        _LegendItem(
+                            color: _kStatusPending, label: 'Pending Out'),
+                        _LegendItem(color: _kStatusAbsent, label: 'Absent'),
+                        _LegendItem(color: _kStatusLeave, label: 'Leave'),
+                      ],
                     ),
-
-                    Container(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      margin: EdgeInsets.only(bottom: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black12.withOpacity(0.06),
-                            blurRadius: 6,
-                          ),
-                        ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _SummaryStat(
+                          label: 'Present',
+                          value:
+                              '${_countStatus(AttendanceStatusType.present)}',
+                          color: _kStatusPresent,
+                        ),
                       ),
-                      child: Wrap(
-                        alignment: WrapAlignment.center,
-                        spacing: 10,
-                        runSpacing: 4,
-                        children: [
-                          _legendItem(Color(0xFF72D58A), "Present"),
-                          _legendItem(Color(0xFFF8C74A), "Half Day"),
-                          _legendItem(Color(0xFFBF4040), "Half Leave"),
-                          _legendItem(Color(0xFFF55D6B), "Absent"),
-                          _legendItem(Color(0xFF6294BA), "Permission"),
-                          _legendItem(Color(0xFFFD05AE), "Holiday"),
-                        ],
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _SummaryStat(
+                          label: 'Absent',
+                          value: '${_countStatus(AttendanceStatusType.absent)}',
+                          color: _kStatusAbsent,
+                        ),
                       ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _SummaryStat(
+                          label: 'Leave',
+                          value: '${_countStatus(AttendanceStatusType.leave)}',
+                          color: _kStatusLeave,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _HistorySurface(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+                    child: TableCalendar<void>(
+                      focusedDay: _focusedDay,
+                      firstDay: DateTime(2020, 1, 1),
+                      lastDay: DateTime(
+                          DateTime.now().year, DateTime.now().month + 6, 0),
+                      calendarFormat: CalendarFormat.month,
+                      selectedDayPredicate: (day) =>
+                          isSameDay(_selectedDay, day),
+                      headerStyle: HeaderStyle(
+                        titleCentered: true,
+                        formatButtonVisible: false,
+                        titleTextStyle: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: _kHistoryText,
+                        ),
+                        leftChevronIcon: const Icon(Icons.chevron_left_rounded,
+                            color: _kHistoryPrimary),
+                        rightChevronIcon: const Icon(
+                            Icons.chevron_right_rounded,
+                            color: _kHistoryPrimary),
+                      ),
+                      daysOfWeekStyle: const DaysOfWeekStyle(
+                        weekdayStyle: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: _kHistoryMuted,
+                        ),
+                        weekendStyle: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: _kHistoryMuted,
+                        ),
+                      ),
+                      calendarStyle: const CalendarStyle(
+                        outsideDaysVisible: false,
+                        isTodayHighlighted: false,
+                        cellMargin: EdgeInsets.all(5),
+                      ),
+                      calendarBuilders: CalendarBuilders(
+                        defaultBuilder: (context, day, focusedDay) =>
+                            _buildCalendarCell(day, false),
+                        todayBuilder: (context, day, focusedDay) =>
+                            _buildCalendarCell(day, false),
+                        selectedBuilder: (context, day, focusedDay) =>
+                            _buildCalendarCell(day, true),
+                        outsideBuilder: (context, day, focusedDay) =>
+                            const SizedBox.shrink(),
+                      ),
+                      onDaySelected: _onDaySelected,
+                      onPageChanged: _onPageChanged,
                     ),
-
-                    // --------------------------------------------------
-                    // ⭐ TRENDY NEW CALENDAR UI
-                    // --------------------------------------------------
-                    Container(
-                      margin: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(22),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black12.withOpacity(0.06),
-                            blurRadius: 10,
-                            offset: Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: TableCalendar(
-                        focusedDay: _focusedDay,
-                        firstDay: DateTime(2020),
-                        lastDay: DateTime(
-                            DateTime.now().year, DateTime.now().month + 1, 0),
-                        calendarFormat: CalendarFormat.month,
-                        rangeStartDay: _rangeStart,
-                        rangeEndDay: _rangeEnd,
-                        rangeSelectionMode: _rangeSelectionMode,
-                        selectedDayPredicate: (d) => isSameDay(_selectedDay, d),
-
-                        // --------------------------------------------------
-                        // 🔷 MODERN HEADER
-                        // --------------------------------------------------
-                        headerStyle: HeaderStyle(
-                          titleCentered: true,
-                          titleTextStyle: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black87,
-                          ),
-                          formatButtonVisible: false,
-                          leftChevronIcon:
-                              Icon(Icons.chevron_left_rounded, size: 22),
-                          rightChevronIcon:
-                              Icon(Icons.chevron_right_rounded, size: 22),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                Color(0xFF1B5E20),
-                                Color(0xFF66BB6A),
-                                // Color(0xFF4CAF50),
-                                // Color(0xFF66BB6A),
-                              ],
-                            ),
-                            borderRadius:
-                                BorderRadius.vertical(top: Radius.circular(10)),
-                          ),
-                          headerPadding: EdgeInsets.symmetric(vertical: 5),
-                          leftChevronMargin: EdgeInsets.only(left: 8),
-                          rightChevronMargin: EdgeInsets.only(right: 8),
-                        ),
-
-                        // --------------------------------------------------
-                        // WEEKDAY STYLING
-                        // --------------------------------------------------
-                        daysOfWeekStyle: DaysOfWeekStyle(
-                          weekdayStyle: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                            color: Colors.grey[700],
-                          ),
-                          weekendStyle: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                            color: Colors.redAccent,
-                          ),
-                        ),
-
-                        // --------------------------------------------------
-                        // DAY CELLS (Modern)
-                        // --------------------------------------------------
-                        calendarStyle: CalendarStyle(
-                          outsideDaysVisible: false,
-                          defaultTextStyle: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          todayDecoration: BoxDecoration(
-                            color: Colors.blue.shade100,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          selectedDecoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                Color(0xFF4CAF50),
-                                Color(0xFF66BB6A),
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          cellMargin: EdgeInsets.all(4),
-                          cellPadding: EdgeInsets.symmetric(vertical: 4),
-                        ),
-
-                        // --------------------------------------------------
-                        // CUSTOM MARKERS (Pill Style Under Date)
-                        // --------------------------------------------------
-                        calendarBuilders: CalendarBuilders(
-                          markerBuilder: (context, date, events) {
-                            final normalized = normalizeDate(date);
-
-                            final weekday = date.weekday;
-                            final isSunday = weekday == DateTime.sunday;
-                            final isHoliday =
-                                holidayMap.containsKey(normalized);
-                            final isPresent =
-                                attendanceMap.containsKey(normalized);
-                            final isLeave =
-                                attendanceMap[normalized]?['leave'] != null;
-                            final isPermission = attendanceMap[normalized]
-                                    ?['permission'] !=
-                                null;
-                            final dayStatus =
-                                attendanceMap[normalized]?['day_status'] ?? '';
-
-                            Color bgColor;
-
-                            if (isHoliday) {
-                              bgColor = Color(0xFFFD05AE);
-                            } else if (isLeave && dayStatus == 'Half Day')
-                              bgColor = Color(0xFFBF4040);
-                            else if (isLeave || dayStatus == 'Absent')
-                              bgColor = Color(0xFFF55D6B);
-                            else if (isPermission && isPresent)
-                              bgColor = Color(0xFFBF4040);
-                            else if (isPermission)
-                              bgColor = Color(0xFF6294BA);
-                            else if (isPresent) {
-                              if (dayStatus == 'Full Day') {
-                                bgColor = Color(0xFF72D58A);
-                              } else if (dayStatus == 'Half Day')
-                                bgColor = Color(0xFFF8C74A);
-                              else if (dayStatus == 'Short Hours')
-                                bgColor = Color(0xFF5DA1F5);
-                              else
-                                bgColor = Colors.grey.shade600;
-                            } else if (isSunday)
-                              bgColor = Color(0xFF6294BA);
-                            else
-                              bgColor = Colors.transparent;
-
-                            return Positioned(
-                              bottom: 6,
-                              child: Container(
-                                width: 22,
-                                height: 6,
-                                decoration: BoxDecoration(
-                                  color: bgColor,
-                                  borderRadius: BorderRadius.circular(4),
+                  ),
+                  const SizedBox(height: 14),
+                  _SelectedDayCard(
+                    date: selected,
+                    statusType: selectedStatus,
+                    statusLabel: _labelForDay(selected),
+                    record: selectedRecord,
+                    onOpenDetail: selectedRecord == null
+                        ? null
+                        : () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => AttendanceDetailPage(
+                                  record: selectedRecord,
+                                  selectedDate: selected,
                                 ),
                               ),
                             );
                           },
+                  ),
+                  const SizedBox(height: 14),
+                  _HistorySurface(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Recorded days this month',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: _kHistoryText,
+                          ),
                         ),
-
-                        // --------------------------------------------------
-                        // CALLBACKS
-                        // --------------------------------------------------
-                        onDaySelected: onDaySelected,
-                        onRangeSelected: onRangeSelected,
-                        onPageChanged: onPageChanged,
-                      ),
+                        const SizedBox(height: 12),
+                        if (_sortedRecords.isEmpty)
+                          const Text(
+                            'No attendance records found for this month.',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: _kHistoryMuted,
+                            ),
+                          )
+                        else
+                          ..._sortedRecords.map(
+                            (record) => Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: _MonthRecordRow(
+                                record: record,
+                                onTap: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => AttendanceDetailPage(
+                                        record: record,
+                                        selectedDate: record.date,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-
-                    SizedBox(height: 6),
-
-                    // --------------------------------------------------
-                    // LIST OF DAILY RECORD CARDS
-                    // --------------------------------------------------
-                    // ListView(children: details),
-                    ...details,
-                  ],
-                ),
+                  ),
+                ],
               ),
+            ),
+    );
+  }
+
+  Widget _buildCalendarCell(DateTime day, bool selected) {
+    final status = _statusFor(day);
+    final color = _statusColor(status);
+    final hasStatus = status != AttendanceStatusType.none;
+    final isFuture =
+        _normalizeDate(day).isAfter(_normalizeDate(DateTime.now()));
+
+    return Center(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color:
+              hasStatus ? color.withValues(alpha: selected ? 1 : 0.14) : null,
+          border: Border.all(
+            color: selected
+                ? (hasStatus ? color : _kHistoryPrimary)
+                : (hasStatus
+                    ? color.withValues(alpha: 0.32)
+                    : Colors.transparent),
+            width: selected ? 1.8 : 1,
+          ),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          '${day.day}',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: selected
+                ? (hasStatus ? Colors.white : _kHistoryPrimary)
+                : isFuture
+                    ? _kHistoryBorder
+                    : hasStatus
+                        ? color
+                        : _kHistoryText,
+          ),
+        ),
       ),
     );
   }
+}
 
-  Widget _kpi(String label, String value, Color color) {
-    return Column(
-      children: [
-        Container(
-          padding: EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
-            shape: BoxShape.circle,
+class _SelectedDayCard extends StatelessWidget {
+  const _SelectedDayCard({
+    required this.date,
+    required this.statusType,
+    required this.statusLabel,
+    required this.record,
+    required this.onOpenDetail,
+  });
+
+  final DateTime date;
+  final AttendanceStatusType statusType;
+  final String statusLabel;
+  final AttendanceDayRecord? record;
+  final VoidCallback? onOpenDetail;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _statusColor(statusType);
+    final showDetail = record != null && record!.hasPunchData;
+
+    return _HistorySurface(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              _StatusDot(
+                color: color,
+                size: 44,
+                child: Text(
+                  DateFormat('dd').format(date),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      DateFormat('EEEE, dd MMM yyyy').format(date),
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w800,
+                        color: _kHistoryText,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      statusLabel,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: color,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          child: Icon(Icons.fiber_manual_record, size: 14, color: color),
-        ),
-        SizedBox(height: 6),
-        Text(
-          value,
-          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-        ),
-        Text(
-          label,
-          style: TextStyle(fontSize: 11, color: Colors.black87),
-        ),
-      ],
+          if (showDetail) ...[
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: _InfoPill(
+                    label: 'In',
+                    value: record!.inTime.isEmpty ? '--:--' : record!.inTime,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _InfoPill(
+                    label: 'Out',
+                    value: record!.outTime.isEmpty ? '--:--' : record!.outTime,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _InfoPill(
+                    label: 'Worked',
+                    value: record!.workedDuration.isEmpty
+                        ? '--:--:--'
+                        : record!.workedDuration,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onOpenDetail,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _kHistoryPrimary,
+                  side: BorderSide(
+                    color: _kHistoryPrimary.withValues(alpha: 0.24),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                icon: const Icon(Icons.visibility_rounded, size: 18),
+                label: const Text(
+                  'Open details',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 12),
+            Text(
+              statusType == AttendanceStatusType.none
+                  ? 'No attendance record on this day.'
+                  : 'No punch details were recorded for this day.',
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: _kHistoryMuted,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
+}
 
-  Widget _legendItem(Color color, String text) {
+class _MonthRecordRow extends StatelessWidget {
+  const _MonthRecordRow({
+    required this.record,
+    required this.onTap,
+  });
+
+  final AttendanceDayRecord record;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _statusColor(record.statusType);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: _kHistorySurfaceAlt,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _kHistoryBorder.withValues(alpha: 0.8)),
+          ),
+          child: Row(
+            children: [
+              _StatusDot(
+                color: color,
+                size: 42,
+                child: Text(
+                  DateFormat('dd').format(record.date),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      DateFormat('EEE, dd MMM yyyy').format(record.date),
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w800,
+                        color: _kHistoryText,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      record.statusLabel,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: color,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    record.inTime.isEmpty ? '--:--' : 'IN ${record.inTime}',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: _kHistoryText,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    record.outTime.isEmpty ? '--:--' : 'OUT ${record.outTime}',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: _kHistoryMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LegendItem extends StatelessWidget {
+  const _LegendItem({
+    required this.color,
+    required this.label,
+  });
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -943,309 +1051,259 @@ class _AttendanceHistoryState extends State<AttendanceHistory> {
             shape: BoxShape.circle,
           ),
         ),
-        SizedBox(width: 4),
+        const SizedBox(width: 6),
         Text(
-          text,
-          style: TextStyle(fontSize: 11, color: Colors.black87),
+          label,
+          style: const TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+            color: _kHistoryText,
+          ),
         ),
       ],
     );
   }
+}
 
-  Widget _buildDetailCard(DateTime date, Map<String, String> data) {
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => AttendanceDetailPage(
-              record: {
-                'check_in_latitude': data['check_in_latitude'],
-                'check_in_longitude': data['check_in_longitude'],
-                'check_out_latitude': data['check_out_latitude'],
-                'check_out_longitude': data['check_out_longitude'],
-                'check_in_time': data['in'],
-                'check_out_time': data['out'],
-                'check_in_image': data['check_in_image'],
-                'check_out_image': data['check_out_image'],
-              },
-              selectedDate: date,
-            ),
-          ),
-        );
-      },
-      child: Container(
-        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        padding: EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black12.withOpacity(0.06),
-              blurRadius: 8,
-              offset: Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            // Date block
-            Container(
-              padding: EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF4CAF50), Color(0xFF66BB6A)],
-                ),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    DateFormat('dd').format(date),
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold),
-                  ),
-                  Text(
-                    DateFormat('EEE').format(date).toUpperCase(),
-                    style: TextStyle(color: Colors.white70, fontSize: 10),
-                  ),
-                ],
-              ),
-            ),
+class _SummaryStat extends StatelessWidget {
+  const _SummaryStat({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 
-            SizedBox(width: 14),
+  final String label;
+  final String value;
+  final Color color;
 
-            // Times
-            Expanded(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _infoColumn("In", data['in'] ?? '--'),
-                  _infoColumn("Out", data['out'] ?? '--'),
-                  _infoColumn("Hours", data['total_worked_time'] ?? '--'),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  int _countPresent() {
-    int count = 0;
-    attendanceMap.forEach((date, data) {
-      final status = data['day_status'] ?? '';
-      final hasLeave = data['leave'] != null;
-      final hasPermission = data['permission'] != null;
-      final isHoliday =
-          holidayMap.containsKey(date) || date.weekday == DateTime.sunday;
-
-      // Present = has a valid day_status and is not leave/permission/holiday/absent-only
-      if (!hasLeave &&
-          !hasPermission &&
-          !isHoliday &&
-          status.isNotEmpty &&
-          status != 'Absent') {
-        count++;
-      }
-    });
-    return count;
-  }
-
-  int _countAbsent() {
-    int count = 0;
-    attendanceMap.forEach((date, data) {
-      final status = data['day_status'] ?? '';
-      final hasLeave = data['leave'] != null;
-      final hasPermission = data['permission'] != null;
-      final isHoliday =
-          holidayMap.containsKey(date) || date.weekday == DateTime.sunday;
-
-      // Absent = explicit Absent with no mapped leave/permission and not holiday
-      if (status == 'Absent' && !hasLeave && !hasPermission && !isHoliday) {
-        count++;
-      }
-    });
-    return count;
-  }
-
-  int _countLeave() {
-    int count = 0;
-    attendanceMap.forEach((date, data) {
-      if (data['leave'] != null) {
-        count++;
-      }
-    });
-    return count;
-  }
-
-  int _countPermission() {
-    int count = 0;
-    attendanceMap.forEach((date, data) {
-      if (data['permission'] != null) {
-        count++;
-      }
-    });
-    return count;
-  }
-
-  Widget _infoColumn(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(value,
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-        Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[700])),
-      ],
-    );
-  }
-
-  Widget _buildAbsentCard(DateTime date) {
-    final leaveStatus = attendanceMap[date]?['leave'];
-    final leaveType = attendanceMap[date]?['leave_type'];
-    final permissionStatus = attendanceMap[date]?['permission'];
-    final holidayName = holidayMap[date];
-    final status = attendanceMap[date]?['day_status'];
-
-    String statusText = "Absent";
-    Color statusColor = Colors.redAccent;
-
-    if (status != null && status.isNotEmpty) {
-      statusText = status;
-      if (status == 'Full Day') statusColor = Colors.green;
-      if (status == 'Half Day') statusColor = Colors.orange;
-      if (status == 'Short Hours') statusColor = Colors.blueGrey;
-    }
-
-    if (leaveStatus != null) {
-      statusText = "$leaveType Leave ($leaveStatus)";
-      statusColor = Colors.orange;
-    } else if (permissionStatus != null) {
-      statusText = "Permission ($permissionStatus)";
-      statusColor = Colors.blue;
-    } else if (holidayName != null) {
-      statusText = "Holiday ($holidayName)";
-      statusColor = Colors.purple;
-    } else if (date.weekday == DateTime.sunday) {
-      statusText = "Sunday (Holiday)";
-      statusColor = Colors.grey;
-    }
-
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      padding: EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12.withOpacity(0.05),
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              children: [
-                Text(
-                  DateFormat('dd').format(date),
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  DateFormat('EEE').format(date).toUpperCase(),
-                  style: TextStyle(fontSize: 10),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(width: 14),
-          Expanded(
-            child: Text(
-              statusText,
-              style: TextStyle(
-                color: statusColor,
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget buildBottomInfoSheet(Map<String, String> info) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
+  @override
+  Widget build(BuildContext context) {
+    return _HistorySurface(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            info['leave'] != null
-                ? "Leave (${info['leave_type']}) - ${info['leave']}"
-                : "Permission - ${info['permission']}",
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            value,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
           ),
-          SizedBox(height: 8),
-          if (info['reason']?.isNotEmpty ?? false)
-            Text("Reason: ${info['reason']}"),
-          if (info['time']?.isNotEmpty ?? false) Text("Time: ${info['time']}"),
-          if (info['submittedAt']?.isNotEmpty ?? false)
-            Text("Submitted: ${info['submittedAt']}"),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: _kHistoryMuted,
+            ),
+          ),
         ],
       ),
     );
   }
+}
 
-  void onDaySelected(DateTime selectedDay, DateTime focusedDay) {
-    setState(() {
-      _selectedDay = selectedDay;
-      _focusedDay = focusedDay;
-      _rangeStart = selectedDay;
-      _rangeEnd = selectedDay;
-      _rangeSelectionMode = RangeSelectionMode.toggledOff;
-    });
+class _HistoryMetricCard extends StatelessWidget {
+  const _HistoryMetricCard({
+    required this.title,
+    required this.value,
+    required this.subtitle,
+    required this.imageUrl,
+    required this.accent,
+  });
 
-    final data = attendanceMap[normalizeDate(selectedDay)];
+  final String title;
+  final String value;
+  final String subtitle;
+  final String? imageUrl;
+  final Color accent;
 
-    if (data != null && (data['leave'] != null || data['permission'] != null)) {
-      showModalBottomSheet(
-        context: context,
-        builder: (_) => buildBottomInfoSheet(data),
-      );
-    }
+  @override
+  Widget build(BuildContext context) {
+    return _HistorySurface(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: accent.withValues(alpha: 0.12),
+            backgroundImage: imageUrl != null && imageUrl!.isNotEmpty
+                ? NetworkImage(imageUrl!)
+                : const AssetImage('assets/images/default_user.png')
+                    as ImageProvider,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: _kHistoryMuted,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: accent,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: _kHistoryMuted,
+            ),
+          ),
+        ],
+      ),
+    );
   }
+}
 
-  void onRangeSelected(DateTime? start, DateTime? end, DateTime focusedDay) {
-    setState(() {
-      _rangeStart = start;
-      _rangeEnd = end;
-      _focusedDay = focusedDay;
-      _rangeSelectionMode = RangeSelectionMode.toggledOn;
-    });
+class _InfoPill extends StatelessWidget {
+  const _InfoPill({
+    required this.label,
+    required this.value,
+    this.accent = _kHistoryPrimary,
+  });
+
+  final String label;
+  final String value;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _kHistorySurfaceAlt,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: _kHistoryMuted,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w800,
+              color: accent,
+            ),
+          ),
+        ],
+      ),
+    );
   }
+}
 
-  void onPageChanged(DateTime focusedDay) {
-    setState(() {
-      _focusedDay = focusedDay;
-      _rangeSelectionMode = RangeSelectionMode.toggledOn;
-    });
+class _HistorySurface extends StatelessWidget {
+  const _HistorySurface({
+    required this.child,
+    this.padding = const EdgeInsets.all(16),
+  });
 
-    fetchAttendanceData();
-    fetchLeavePermissionTickets();
-    fetchHolidays();
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: _kHistorySurface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: _kHistoryBorder.withValues(alpha: 0.85)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x12000000),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+}
+
+class _StatusDot extends StatelessWidget {
+  const _StatusDot({
+    required this.color,
+    required this.child,
+    this.size = 52,
+  });
+
+  final Color color;
+  final Widget child;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.24),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: child,
+    );
+  }
+}
+
+class _MapPin extends StatelessWidget {
+  const _MapPin({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 3),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.28),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: const Icon(
+        Icons.place_rounded,
+        color: Colors.white,
+        size: 18,
+      ),
+    );
   }
 }

@@ -21,6 +21,7 @@ class _SupervisorStaffScreenState extends State<SupervisorStaffScreen> {
   bool _loading = true;
   String? _error;
   Map<String, List<SupervisorStaff>> _grouped = {};
+  final Set<String> _expanded = <String>{};
 
   @override
   void initState() {
@@ -90,47 +91,103 @@ class _SupervisorStaffScreenState extends State<SupervisorStaffScreen> {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
         children: [
           for (final designation in designations) ...[
-            _sectionHeader(designation, _grouped[designation]!.length),
-            const SizedBox(height: 8),
-            ..._grouped[designation]!.map((s) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _StaffCard(staff: s),
-                )),
-            const SizedBox(height: 10),
+            _DesignationSection(
+              title: designation,
+              count: _grouped[designation]!.length,
+              expanded: _expanded.contains(designation),
+              onToggle: () {
+                setState(() {
+                  if (!_expanded.add(designation)) {
+                    _expanded.remove(designation);
+                  }
+                });
+              },
+              children: _grouped[designation]!
+                  .map((s) => Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: _StaffCard(staff: s),
+                      ))
+                  .toList(),
+            ),
+            const SizedBox(height: 12),
           ],
         ],
       ),
     );
   }
+}
 
-  Widget _sectionHeader(String title, int count) {
-    return Row(
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-            color: SupervisorTheme.strongText,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-          decoration: BoxDecoration(
-            color: SupervisorTheme.accent.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Text(
-            '$count',
-            style: const TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w800,
-              color: SupervisorTheme.accentDeep,
+class _DesignationSection extends StatelessWidget {
+  const _DesignationSection({
+    required this.title,
+    required this.count,
+    required this.expanded,
+    required this.onToggle,
+    required this.children,
+  });
+
+  final String title;
+  final int count;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: SupervisorTheme.surface,
+        borderRadius: SupervisorTheme.cardRadius,
+        border: Border.all(color: SupervisorTheme.hairline.withValues(alpha: 0.6)),
+        boxShadow: SupervisorTheme.softShadow,
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: onToggle,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: SupervisorTheme.strongText,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: SupervisorTheme.accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                      color: SupervisorTheme.accentDeep,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  expanded
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded,
+                  color: SupervisorTheme.mutedText,
+                ),
+              ],
             ),
           ),
-        ),
-      ],
+          if (expanded) ...children,
+        ],
+      ),
     );
   }
 }

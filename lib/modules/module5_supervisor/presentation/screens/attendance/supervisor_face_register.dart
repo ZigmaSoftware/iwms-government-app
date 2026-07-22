@@ -165,7 +165,7 @@ class _SupervisorFaceRegisterScreenState
 
       final request = http.MultipartRequest(
         'POST',
-        Uri.parse('${ApiConfig.desktopBase}register/'),
+        Uri.parse('${ApiConfig.attendanceBase}register/'),
       );
       final token = await _authToken();
       if (token != null) request.headers['Authorization'] = 'Bearer $token';

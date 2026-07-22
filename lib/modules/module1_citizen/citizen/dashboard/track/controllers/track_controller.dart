@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
@@ -60,12 +62,17 @@ class TrackController extends ChangeNotifier {
     if (selectedPeriod == period) return;
     selectedPeriod = period;
     notifyListeners();
+    unawaited(refresh(force: true));
   }
 
   Future<void> pickDate(DateTime date) async {
     selectedDate = _normalize(date);
-    await refresh();
     notifyListeners();
+    // Always force: the cache guard in refresh() keys off a period-
+    // normalized reference date (e.g. first-of-month for Monthly), so an
+    // explicit date pick within the same period bucket would otherwise be
+    // silently skipped.
+    await refresh(force: true);
   }
 
   DateTime _normalize(DateTime date) =>

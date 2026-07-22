@@ -7,6 +7,15 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Firebase push notifications: only apply the Google Services plugin (which
+// reads google-services.json at build time and FAILS the build if that file
+// is missing) once the file actually exists. Drop your project's
+// google-services.json into this directory (android/app/) to activate it —
+// no other build changes needed.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.example.iwms_citizen_app" // Using your new namespace
     compileSdk = 36

@@ -4,10 +4,15 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:iwms_citizen_app/core/ui/app_flash.dart';
 import 'package:iwms_citizen_app/modules/module1_citizen/citizen/map.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/data/supervisor_models.dart';
+import 'package:iwms_citizen_app/modules/module5_supervisor/data/supervisor_grievance_repository.dart';
+import 'package:iwms_citizen_app/modules/module5_supervisor/data/supervisor_repository.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_history_screen.dart';
+import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_households_screen.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_staff_attendance_screen.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_staff_screen.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_teams_screen.dart';
+import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_vehicles_screen.dart';
+import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_collection_points_screen.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/logic/supervisor_bloc.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_grievance_screen.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/theme/supervisor_theme.dart';
@@ -23,12 +28,14 @@ class SupervisorHomePage extends StatefulWidget {
     super.key,
     required this.name,
     required this.onLogout,
+    this.empId,
     this.onOpenTrips,
     this.onOpenAssignments,
     this.onOpenTeam,
   });
 
   final String name;
+  final String? empId;
   final VoidCallback onLogout;
   final VoidCallback? onOpenTrips;
   final VoidCallback? onOpenAssignments;
@@ -42,6 +49,39 @@ enum _QuickActionFilter { actions, approvals, explore }
 
 class _SupervisorHomePageState extends State<SupervisorHomePage> {
   _QuickActionFilter _selectedQuickActionFilter = _QuickActionFilter.actions;
+  final SupervisorGrievanceRepository _grievanceRepo =
+      SupervisorGrievanceRepository();
+  int _grievanceCount = 0;
+  int _collectionPointCount = 0;
+  int _householdCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadGrievanceCount();
+    _loadHierarchyCounts();
+  }
+
+  Future<void> _loadGrievanceCount() async {
+    try {
+      final tickets = await _grievanceRepo.fetchTickets();
+      if (!mounted) return;
+      setState(() => _grievanceCount = tickets.length);
+    } catch (_) {}
+  }
+
+  Future<void> _loadHierarchyCounts() async {
+    try {
+      final repo = SupervisorRepository();
+      final collectionPoints = await repo.fetchCollectionPoints();
+      final households = await repo.fetchHouseholds();
+      if (!mounted) return;
+      setState(() {
+        _collectionPointCount = collectionPoints.length;
+        _householdCount = households.length;
+      });
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +94,9 @@ class _SupervisorHomePageState extends State<SupervisorHomePage> {
             children: [
               SupervisorHeader(
                 name: widget.name,
+                empId: widget.empId,
                 onLogout: widget.onLogout,
+                zoneLabel: state.scopeLabel,
                 zoneCount: state.scope.zoneIds.length,
               ),
               Expanded(
@@ -95,6 +137,8 @@ class _SupervisorHomePageState extends State<SupervisorHomePage> {
       color: SupervisorTheme.accent,
       onRefresh: () async {
         context.read<SupervisorBloc>().add(const SupervisorRefreshRequested());
+        await _loadGrievanceCount();
+        await _loadHierarchyCounts();
       },
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -210,7 +254,58 @@ class _SupervisorHomePageState extends State<SupervisorHomePage> {
       AppFlash.info(context, '$name — coming soon');
     }
 
+    final assignments = context.read<SupervisorBloc>().state.assignments;
+    final supervisorVehicleCount = assignments
+        .map((assignment) => assignment.vehicleNo.trim())
+        .where((vehicleNo) => vehicleNo.isNotEmpty)
+        .toSet()
+        .length;
+    final supervisorTeamCount = assignments
+        .map((assignment) => assignment.staffTemplateId?.trim() ?? '')
+        .where((templateId) => templateId.isNotEmpty)
+        .toSet()
+        .length;
+    final tripCount = assignments.length;
+
     final tiles = <_QuickActionSpec>[
+      _QuickActionSpec(
+        filter: _QuickActionFilter.actions,
+        tile: SupervisorGlassActionTile(
+          iconAsset: 'assets/icons/collection_point.png',
+          label: 'Points',
+          badgeLabel: '$_collectionPointCount',
+          onTap: () {
+            final bloc = context.read<SupervisorBloc>();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => BlocProvider<SupervisorBloc>.value(
+                  value: bloc,
+                  child: const SupervisorCollectionPointsScreen(),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+      _QuickActionSpec(
+        filter: _QuickActionFilter.actions,
+        tile: SupervisorGlassActionTile(
+          iconAsset: 'assets/icons/house.png',
+          label: 'Households',
+          badgeLabel: '$_householdCount',
+          onTap: () {
+            final bloc = context.read<SupervisorBloc>();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => BlocProvider<SupervisorBloc>.value(
+                  value: bloc,
+                  child: const SupervisorHouseholdsScreen(),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
       _QuickActionSpec(
         filter: _QuickActionFilter.actions,
         tile: SupervisorGlassActionTile(
@@ -240,7 +335,27 @@ class _SupervisorHomePageState extends State<SupervisorHomePage> {
         tile: SupervisorGlassActionTile(
           iconAsset: 'assets/icons/garbage-truck.png',
           label: 'Trips',
+          badgeLabel: '$tripCount',
           onTap: widget.onOpenTrips,
+        ),
+      ),
+      _QuickActionSpec(
+        filter: _QuickActionFilter.actions,
+        tile: SupervisorGlassActionTile(
+          iconAsset: 'assets/icons/trucks.png',
+          label: 'Vehicles',
+          badgeLabel: '$supervisorVehicleCount',
+          onTap: () {
+            final bloc = context.read<SupervisorBloc>();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => BlocProvider<SupervisorBloc>.value(
+                  value: bloc,
+                  child: const SupervisorVehiclesScreen(),
+                ),
+              ),
+            );
+          },
         ),
       ),
       _QuickActionSpec(
@@ -248,9 +363,20 @@ class _SupervisorHomePageState extends State<SupervisorHomePage> {
         tile: SupervisorGlassActionTile(
           iconAsset: 'assets/icons/teams.png',
           label: 'Teams',
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const SupervisorTeamsScreen()),
-          ),
+          badgeLabel: '$supervisorTeamCount',
+          onTap: () {
+            // Share the existing SupervisorBloc so the Teams screen can tell
+            // whether each team is on a trip right now.
+            final bloc = context.read<SupervisorBloc>();
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => BlocProvider<SupervisorBloc>.value(
+                  value: bloc,
+                  child: const SupervisorTeamsScreen(),
+                ),
+              ),
+            );
+          },
         ),
       ),
       _QuickActionSpec(
@@ -258,6 +384,7 @@ class _SupervisorHomePageState extends State<SupervisorHomePage> {
         tile: SupervisorGlassActionTile(
           iconAsset: 'assets/icons/grievance.png',
           label: 'Grievances',
+          badgeLabel: '$_grievanceCount',
           onTap: () => Navigator.of(context).push(
             MaterialPageRoute(
               builder: (_) => const SupervisorGrievanceScreen(),
@@ -268,8 +395,8 @@ class _SupervisorHomePageState extends State<SupervisorHomePage> {
       _QuickActionSpec(
         filter: _QuickActionFilter.actions,
         tile: SupervisorGlassActionTile(
-          iconAsset: 'assets/icons/navigate.png',
-          label: 'Navigate',
+          iconAsset: 'assets/icons/map.png',
+          label: 'Map',
           // Opens the citizen live-tracking map (all vehicles) — MapScreen
           // self-provides its VehicleBloc, so it works from any context.
           onTap: () => Navigator.of(context).push(

@@ -64,7 +64,7 @@ class _ProfilePageState extends State<ProfilePage> {
       }
 
       final res = await http.get(
-        Uri.parse('${ApiConfig.desktopBase}staff-profile/').replace(
+        Uri.parse('${ApiConfig.attendanceBase}staff-profile/').replace(
           queryParameters: {'staff_id_id': widget.empId},
         ),
         headers: headers.isEmpty ? null : headers,
@@ -123,7 +123,7 @@ class _ProfilePageState extends State<ProfilePage> {
     setState(() => _submitting = true);
     try {
       final token = await _getAuthToken();
-      final url = Uri.parse('${ApiConfig.desktopBase}register/');
+      final url = Uri.parse('${ApiConfig.attendanceBase}register/');
       final req = http.MultipartRequest("POST", url);
 
       if (token != null && token.isNotEmpty) {

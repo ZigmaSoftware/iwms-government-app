@@ -45,6 +45,11 @@ dependencies:
   flutter_map: ^7.0.1          # <-- UPGRADED
   latlong2: ^0.9.1            # <-- UPGRADED
   flutter_local_notifications: 19.5.0
+  # Push notifications (instant, backend-triggered — see lib/core/push/).
+  # Inert until android/app/google-services.json is added; see that folder's
+  # notes for setup.
+  firebase_core: ^3.15.2
+  firebase_messaging: ^15.2.10
   # --- Module 3 (Operator) Packages ---
   mobile_scanner: ^7.2.0
   geolocator: ^12.0.0

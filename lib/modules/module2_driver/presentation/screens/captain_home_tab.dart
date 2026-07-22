@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 import 'package:intl/intl.dart';
@@ -7,9 +9,11 @@ import 'package:iwms_citizen_app/data/models/operator_trip_models.dart';
 import 'package:iwms_citizen_app/data/repositories/operator_trip_repository.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/theme/captain_theme.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/screens/operator_trip_history_screen.dart';
+import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/household_action_sheet.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/bin_detail_sheet.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/captain_glass.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/collection_progress_meter.dart';
+import 'package:iwms_citizen_app/shared/widgets/crew_avatar_stack.dart';
 
 /// Captain Home — the "today-first" dashboard of the merged driver app.
 ///
@@ -19,10 +23,10 @@ import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/col
 ///   2. quick actions (Navigate / Scan / History)
 ///   3. stop-by-stop timeline — tap a pending stop to open weight entry
 ///   4. crew card — the operator(s) riding this vehicle today
-class CaptainHomeTab extends StatelessWidget {
+class CaptainHomeTab extends StatefulWidget {
   const CaptainHomeTab({
     super.key,
-    required this.trip,
+    required this.trips,
     required this.loading,
     required this.error,
     required this.onRefresh,
@@ -32,17 +36,83 @@ class CaptainHomeTab extends StatelessWidget {
     this.driverName,
   });
 
-  final OperatorTripToday? trip;
+  /// All of the driver's trips today. When more than one (e.g. a bin trip AND a
+  /// household trip) the header becomes a horizontally-swipeable carousel.
+  final List<OperatorTripToday> trips;
   final bool loading;
   final String? error;
   final Future<void> Function() onRefresh;
-  final VoidCallback onOpenMap;
+
+  /// Opens the Map tab for a specific trip so the map plots that trip's stops
+  /// (bin collection points, or household customer locations).
+  final void Function(OperatorTripToday trip) onOpenMap;
   final VoidCallback onScan;
 
   /// Opens the trips view (current + history). Falls back to the shared
   /// trip-history screen when the host doesn't provide one.
   final VoidCallback? onOpenTrips;
   final String? driverName;
+
+  @override
+  State<CaptainHomeTab> createState() => _CaptainHomeTabState();
+}
+
+class _CaptainHomeTabState extends State<CaptainHomeTab> {
+  int _selected = 0;
+  // The selected trip's stable identity, so a background refresh (the driver's
+  // location poll rebuilds this tab periodically) that returns the trips in a
+  // different order doesn't silently swap which trip "index 1" points at —
+  // that was surfacing as the carousel appearing to snap back to a previous
+  // card even though the user hadn't touched it.
+  String? _selectedTripId;
+
+  // A horizontal SingleChildScrollView is used instead of PageView. PageView
+  // requires an artificial fixed height, which was the reason the trip card
+  // looked too tall on the real DriverHomePage. This carousel takes the exact
+  // natural height of its cards and is snapped manually after a swipe.
+  final ScrollController _carouselController = ScrollController();
+  double _carouselItemExtent = 0;
+  bool _carouselSnapping = false;
+
+  @override
+  void didUpdateWidget(covariant CaptainHomeTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.trips.isEmpty) return;
+
+    // Re-locate the previously-selected trip by identity in the (possibly
+    // reordered) new list, rather than trusting the old raw index.
+    final newIndex = _selectedTripId == null
+        ? -1
+        : widget.trips
+            .indexWhere((t) => t.assignmentUniqueId == _selectedTripId);
+
+    final targetIndex =
+        newIndex != -1 ? newIndex : _selected.clamp(0, widget.trips.length - 1);
+
+    if (targetIndex != _selected) {
+      _selected = targetIndex;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted ||
+            !_carouselController.hasClients ||
+            _carouselItemExtent <= 0) {
+          return;
+        }
+
+        final target = (_selected * _carouselItemExtent)
+            .clamp(0.0, _carouselController.position.maxScrollExtent)
+            .toDouble();
+        _carouselController.jumpTo(target);
+      });
+    }
+    _selectedTripId = widget.trips[_selected].assignmentUniqueId;
+  }
+
+  @override
+  void dispose() {
+    _carouselController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -52,73 +122,527 @@ class CaptainHomeTab extends StatelessWidget {
   }
 
   Widget _buildBody(BuildContext context) {
-    if (loading) {
+    if (widget.loading) {
       return Center(
         child: CircularProgressIndicator(color: CaptainTheme.accent),
       );
     }
-    if (error != null) {
+    if (widget.error != null) {
       return _MessageView(
         icon: Icons.error_outline_rounded,
         iconColor: CaptainTheme.danger,
         title: 'Could not load your trip',
-        message: error!,
+        message: widget.error!,
         actionLabel: 'Retry',
-        onAction: onRefresh,
+        onAction: widget.onRefresh,
       );
     }
-    if (trip == null) {
+    if (widget.trips.isEmpty) {
       return _MessageView(
-        icon: Icons.event_busy_rounded,
-        iconColor: CaptainTheme.accent,
+        imageAsset: 'assets/images/no_assignments.png',
         title: 'No trip today',
         message:
             'No trip has been assigned to this vehicle yet. Pull to refresh or check with your supervisor.',
         actionLabel: 'Refresh',
-        onAction: onRefresh,
+        onAction: widget.onRefresh,
       );
     }
 
-    final t = trip!;
+    final trips = widget.trips;
+    final selected = _selected.clamp(0, trips.length - 1);
+    final t = trips[selected];
+    final multi = trips.length > 1;
+    // First build: seed the identity tracker used by didUpdateWidget above.
+    _selectedTripId ??= t.assignmentUniqueId;
+
+    final bottomSafeArea = MediaQuery.viewPaddingOf(context).bottom;
+
     return RefreshIndicator(
       color: CaptainTheme.accent,
-      onRefresh: onRefresh,
+      onRefresh: widget.onRefresh,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 120),
+        // DriverHomePage already owns the header and overlays the bottom
+        // navigation/FAB. A 16 px page grid matches its map/profile sections.
+        padding: EdgeInsets.fromLTRB(16, 12, 16, 112 + bottomSafeArea),
         children: [
-          _TripHeroCard(trip: t, onOpenMap: onOpenMap),
-          const SizedBox(height: 14),
+          if (multi)
+            _buildTripCarousel(
+              trips: trips,
+              selected: selected,
+            )
+          else
+            _TripHeroCard(
+              trip: t,
+              onOpenMap: () => widget.onOpenMap(t),
+            ),
+          const SizedBox(height: 12),
           _QuickActionsRow(
-            onOpenMap: onOpenMap,
-            onScan: onScan,
-            onHistory: onOpenTrips ??
+            onOpenMap: () => widget.onOpenMap(t),
+            onScan: widget.onScan,
+            onHistory: widget.onOpenTrips ??
                 () => Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => const OperatorTripHistoryScreen(),
                       ),
                     ),
           ),
-          const SizedBox(height: 18),
-          CollectionProgressMeter(collectionPoints: t.collectionPoints),
-          const SizedBox(height: 18),
-          _SectionTitle(
-            title: 'Collection points',
-            trailing: '${t.progress.collected}/${t.progress.total} done',
-          ),
-          const SizedBox(height: 10),
-          _StopsTimeline(trip: t, onChanged: onRefresh),
-          if (t.crew != null &&
-              (t.crew!.operators.isNotEmpty || t.crew!.driver != null)) ...[
-            const SizedBox(height: 18),
-            const _SectionTitle(title: 'Your crew'),
+          const SizedBox(height: 16),
+          // Household / bulk trips collect customers directly (no bins), so
+          // show the household list instead of the bin route + collection points.
+          if (t.isHousehold) ...[
+            _SectionTitle(
+              title: 'Households',
+              trailing: '${t.progress.collected}/${t.progress.total} done',
+            ),
             const SizedBox(height: 10),
-            _CrewCard(crew: t.crew!),
+            _HouseholdTimeline(trip: t, onChanged: widget.onRefresh),
+          ] else ...[
+            CollectionProgressMeter(collectionPoints: t.collectionPoints),
+            const SizedBox(height: 16),
+            _SectionTitle(
+              title: 'Collection points',
+              trailing: '${t.progress.collected}/${t.progress.total} done',
+            ),
+            const SizedBox(height: 10),
+            _StopsTimeline(trip: t, onChanged: widget.onRefresh),
           ],
         ],
       ),
     );
   }
+
+  /// Content-sized horizontal carousel.
+  ///
+  /// Unlike PageView, this widget does not need a hard-coded height. Its height
+  /// is exactly the natural height of [_TripHeroCard], so there is no empty
+  /// lower area on Android, iOS, tablets or accessibility text sizes.
+  Widget _buildTripCarousel({
+    required List<OperatorTripToday> trips,
+    required int selected,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth;
+        final cardFraction = availableWidth < 340 ? 0.965 : 0.945;
+        final cardWidth = availableWidth * cardFraction;
+        const gap = 8.0;
+
+        _carouselItemExtent = cardWidth + gap;
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            NotificationListener<ScrollEndNotification>(
+              onNotification: (notification) {
+                _snapCarousel(trips.length);
+                return false;
+              },
+              child: SingleChildScrollView(
+                controller: _carouselController,
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ),
+                clipBehavior: Clip.none,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (var index = 0; index < trips.length; index++) ...[
+                      SizedBox(
+                        width: cardWidth,
+                        child: _TripHeroCard(
+                          trip: trips[index],
+                          onOpenMap: () => widget.onOpenMap(trips[index]),
+                        ),
+                      ),
+                      if (index != trips.length - 1) const SizedBox(width: gap),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 5),
+            _CarouselDots(count: trips.length, index: selected),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _snapCarousel(int itemCount) async {
+    if (_carouselSnapping ||
+        itemCount <= 1 ||
+        !_carouselController.hasClients ||
+        _carouselItemExtent <= 0) {
+      return;
+    }
+
+    final maxIndex = itemCount - 1;
+    final targetIndex = (_carouselController.offset / _carouselItemExtent)
+        .round()
+        .clamp(0, maxIndex)
+        .toInt();
+    final targetOffset = (targetIndex * _carouselItemExtent)
+        .clamp(0.0, _carouselController.position.maxScrollExtent)
+        .toDouble();
+
+    if (_selected != targetIndex && mounted) {
+      setState(() => _selected = targetIndex);
+      if (targetIndex < widget.trips.length) {
+        _selectedTripId = widget.trips[targetIndex].assignmentUniqueId;
+      }
+    }
+
+    if ((_carouselController.offset - targetOffset).abs() < 0.5) return;
+
+    _carouselSnapping = true;
+    try {
+      await _carouselController.animateTo(
+        targetOffset,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    } finally {
+      _carouselSnapping = false;
+    }
+  }
+}
+
+/// Small page-dots indicator for the header carousel.
+class _CarouselDots extends StatelessWidget {
+  const _CarouselDots({required this.count, required this.index});
+
+  final int count;
+  final int index;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (var i = 0; i < count; i++)
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            margin: const EdgeInsets.symmetric(horizontal: 2.5),
+            width: i == index ? 15 : 5,
+            height: 5,
+            decoration: BoxDecoration(
+              color: i == index
+                  ? CaptainTheme.accent
+                  : CaptainTheme.mutedText.withValues(alpha: 0.32),
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+// Crew avatar widgets moved to lib/shared/widgets/crew_avatar_stack.dart
+// (CrewAvatarStack / CrewAvatar) so the supervisor module can reuse them.
+
+Future<void> _showCrewDialog(BuildContext context, OperatorTripCrew crew) {
+  return showGeneralDialog<void>(
+    context: context,
+    barrierLabel: 'Crew',
+    barrierDismissible: true,
+    barrierColor: Colors.black.withValues(alpha: 0.18),
+    transitionDuration: const Duration(milliseconds: 220),
+    pageBuilder: (dialogContext, _, __) {
+      return _CrewDialog(crew: crew);
+    },
+    transitionBuilder: (context, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
+      return FadeTransition(
+        opacity: curved,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
+          child: child,
+        ),
+      );
+    },
+  );
+}
+
+class _CrewDialog extends StatelessWidget {
+  const _CrewDialog({required this.crew});
+
+  final OperatorTripCrew crew;
+
+  @override
+  Widget build(BuildContext context) {
+    final members = <OperatorTripCrewMember>[
+      if (crew.driver != null) crew.driver!,
+      ...crew.operators,
+    ];
+
+    return Material(
+      color: Colors.transparent,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                child: Container(color: Colors.transparent),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Center(
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: CaptainGlassCard(
+                    padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+                    borderRadius: const BorderRadius.all(Radius.circular(24)),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.groups_rounded,
+                              size: 20,
+                              color: CaptainTheme.accent,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Crew details',
+                                style: TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w800,
+                                  color: CaptainTheme.strongText,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              icon: const Icon(Icons.close_rounded),
+                              color: CaptainTheme.mutedText,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                          ],
+                        ),
+                        if (crew.isAltActive) ...[
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color:
+                                  CaptainTheme.warning.withValues(alpha: 0.14),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              'Alternative crew active',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                color: CaptainTheme.warning,
+                              ),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 14),
+                        for (var i = 0; i < members.length; i++) ...[
+                          _CrewMemberTile(member: members[i]),
+                          if (i != members.length - 1)
+                            const SizedBox(height: 10),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CrewMemberTile extends StatelessWidget {
+  const _CrewMemberTile({required this.member});
+
+  final OperatorTripCrewMember member;
+
+  @override
+  Widget build(BuildContext context) {
+    final statusText = member.attendanceStatus?.trim().isNotEmpty == true
+        ? member.attendanceStatus!
+        : (member.isPresent ? 'Present' : 'Absent');
+    final statusColor =
+        member.isPresent ? CaptainTheme.success : CaptainTheme.danger;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: statusColor.withValues(alpha: 0.18),
+        ),
+      ),
+      child: Row(
+        children: [
+          CrewAvatar(
+              member: member,
+              size: 48,
+              borderWidth: 2,
+              borderColor: CaptainTheme.surface),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  member.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w800,
+                    color: CaptainTheme.strongText,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                if (member.roleLabel.isNotEmpty)
+                  Text(
+                    member.roleLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: CaptainTheme.mutedText,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: statusColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              statusText,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                color: statusColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Collection-type badge. Only the two meaningful header badges remain as
+/// containers; vehicle, waste and time are plain icon/text metadata.
+class _CollectionTypePill extends StatelessWidget {
+  const _CollectionTypePill({
+    required this.collectionType,
+    required this.compact,
+  });
+
+  final String? collectionType;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = _styleFor(collectionType);
+    if (style.label == null) return const SizedBox.shrink();
+
+    final label = compact ? style.compactLabel : style.label;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: style.background,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label!,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        softWrap: false,
+        style: TextStyle(
+          fontSize: compact ? 9.5 : 10,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.15,
+          color: style.foreground,
+          height: 1.05,
+        ),
+      ),
+    );
+  }
+
+  _CollectionBadgeStyle _styleFor(String? type) {
+    switch (type) {
+      case 'bin_collection':
+        return const _CollectionBadgeStyle(
+          label: 'Bin Collection',
+          compactLabel: 'Bin',
+          background: Color(0xFFDBEAFE),
+          foreground: Color(0xFF1E40AF),
+        );
+      case 'household_collection':
+        return const _CollectionBadgeStyle(
+          label: 'Household Collection',
+          compactLabel: 'Household',
+          background: Color(0xFFDCFCE7),
+          foreground: Color(0xFF166534),
+        );
+      case 'bulk_waste_collection':
+        return const _CollectionBadgeStyle(
+          label: 'Bulk Waste Collection',
+          compactLabel: 'Bulk Waste',
+          background: Color(0xFFFEF3C7),
+          foreground: Color(0xFF92400E),
+        );
+      default:
+        return const _CollectionBadgeStyle(
+          label: null,
+          compactLabel: null,
+          background: Colors.transparent,
+          foreground: Colors.transparent,
+        );
+    }
+  }
+}
+
+class _CollectionBadgeStyle {
+  const _CollectionBadgeStyle({
+    required this.label,
+    required this.compactLabel,
+    required this.background,
+    required this.foreground,
+  });
+
+  final String? label;
+  final String? compactLabel;
+  final Color background;
+  final Color foreground;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -144,6 +668,18 @@ class _TripHeroCard extends StatelessWidget {
     }
   }
 
+  Color get _typeTint {
+    switch (trip.collectionType) {
+      case 'household_collection':
+        return CaptainTheme.success;
+      case 'bulk_waste_collection':
+        return CaptainTheme.gold;
+      case 'bin_collection':
+      default:
+        return CaptainTheme.accent;
+    }
+  }
+
   String _formatTime(String? raw) {
     if (raw == null || raw.isEmpty) return '—';
     final parts = raw.split(':');
@@ -157,124 +693,300 @@ class _TripHeroCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final progress = trip.progress;
-    return CaptainGlassCard(
-      onTap: onOpenMap,
-      padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 315;
+        final veryNarrow = constraints.maxWidth < 280;
+        final ringSize = veryNarrow ? 52.0 : 56.0;
+
+        return CaptainGlassCard(
+          onTap: onOpenMap,
+          tint: _typeTint,
+          padding: EdgeInsets.fromLTRB(
+            veryNarrow ? 10 : 13,
+            15,
+            veryNarrow ? 10 : 12,
+            20,
+          ),
+          borderRadius: const BorderRadius.all(Radius.circular(19)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _statusColor.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(9),
-                  border: Border.all(
-                    color: _statusColor.withValues(alpha: 0.4),
+              // Header row: compact type + quieter status + secondary date.
+              Row(
+                children: [
+                  Expanded(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (trip.crew != null &&
+                            (trip.crew!.driver != null ||
+                                trip.crew!.operator != null)) ...[
+                          CrewAvatarStack(
+                            crew: trip.crew!,
+                            onTap: () => _showCrewDialog(context, trip.crew!),
+                            borderColor: CaptainTheme.surface,
+                          ),
+                          const SizedBox(width: 6),
+                        ],
+                        Flexible(
+                          flex: 3,
+                          child: _CollectionTypePill(
+                            collectionType: trip.collectionType,
+                            compact: narrow,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          flex: 2,
+                          child: _TripStatusPill(
+                            status: trip.status,
+                            color: _statusColor,
+                            compact: veryNarrow,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                child: Text(
-                  trip.status.toUpperCase(),
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.6,
-                    color: _statusColor,
+                  const SizedBox(width: 6),
+                  Text(
+                    DateFormat(narrow ? 'd MMM' : 'EEE, d MMM')
+                        .format(trip.tripDate),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.fade,
+                    style: TextStyle(
+                      fontSize: narrow ? 9.5 : 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: CaptainTheme.mutedText,
+                      height: 1.0,
+                    ),
                   ),
-                ),
+                ],
               ),
-              const Spacer(),
-              Text(
-                DateFormat('EEE, d MMM').format(trip.tripDate),
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                  color: CaptainTheme.mutedText,
-                ),
+              const SizedBox(height: 14),
+
+              // One compact content row. The left side may naturally gain a
+              // metadata line on narrow devices; because the card is
+              // content-sized, its height grows only when it genuinely needs to.
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          trip.areaName,
+                          maxLines: veryNarrow ? 2 : 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: veryNarrow ? 15 : 16.5,
+                            fontWeight: FontWeight.w800,
+                            color: CaptainTheme.strongText,
+                            height: 1.05,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 7,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            if (trip.vehicle != null)
+                              _CompactInfoItem(
+                                icon: Icons.local_shipping_rounded,
+                                text: trip.vehicle!.vehicleNo,
+                                maxTextWidth: veryNarrow ? 76 : 108,
+                              ),
+                            _CompactInfoItem(
+                              icon: Icons.schedule_rounded,
+                              text: _formatTime(trip.scheduledTime),
+                              maxTextWidth: 72,
+                            ),
+                            if (trip.wasteType.name.isNotEmpty)
+                              _CompactInfoItem(
+                                icon: Icons.recycling_rounded,
+                                text: trip.wasteType.name,
+                                maxTextWidth: veryNarrow ? 92 : 128,
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  _CompactTripProgress(
+                    fraction: progress.fraction,
+                    completed: progress.completed,
+                    label: '${progress.collected}/${progress.total}',
+                    size: ringSize,
+                  ),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      trip.areaName,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        color: CaptainTheme.strongText,
-                        height: 1.15,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (trip.vehicle != null)
-                      _HeroDetailRow(
-                        icon: Icons.local_shipping_rounded,
-                        text: trip.vehicle!.vehicleNo,
-                      ),
-                    if (trip.wasteType.name.isNotEmpty) ...[
-                      const SizedBox(height: 5),
-                      _HeroDetailRow(
-                        icon: Icons.recycling_rounded,
-                        text: trip.wasteType.name,
-                      ),
-                    ],
-                    const SizedBox(height: 5),
-                    _HeroDetailRow(
-                      icon: Icons.schedule_rounded,
-                      text: 'Starts ${_formatTime(trip.scheduledTime)}',
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              CaptainProgressRing(
-                fraction: progress.fraction,
-                completed: progress.completed,
-                label: '${progress.collected}/${progress.total}',
-                sublabel: progress.completed ? 'DONE' : 'STOPS',
-              ),
-            ],
-          ),
-        ],
+        );
+      },
+    );
+  }
+}
+
+class _TripStatusPill extends StatelessWidget {
+  const _TripStatusPill({
+    required this.status,
+    required this.color,
+    required this.compact,
+  });
+
+  final String status;
+  final Color color;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 6 : 7,
+        vertical: 2.5,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: color.withValues(alpha: 0.34)),
+      ),
+      child: Text(
+        status.toUpperCase(),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        softWrap: false,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: compact ? 8.3 : 8.8,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.3,
+          color: color,
+          height: 1.05,
+        ),
       ),
     );
   }
 }
 
-class _HeroDetailRow extends StatelessWidget {
-  const _HeroDetailRow({required this.icon, required this.text});
+/// Plain icon and text. No individual chip background, border or padding.
+class _CompactInfoItem extends StatelessWidget {
+  const _CompactInfoItem({
+    required this.icon,
+    required this.text,
+    required this.maxTextWidth,
+  });
 
   final IconData icon;
   final String text;
+  final double maxTextWidth;
 
   @override
   Widget build(BuildContext context) {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: CaptainTheme.accentDeep),
-        const SizedBox(width: 6),
-        Flexible(
+        Icon(icon, size: 13, color: CaptainTheme.accent),
+        const SizedBox(width: 4),
+        ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxTextWidth),
           child: Text(
             text,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
+            softWrap: false,
             style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: CaptainTheme.mutedText,
+              fontSize: 10.8,
+              fontWeight: FontWeight.w700,
+              color: CaptainTheme.strongText,
+              height: 1.05,
             ),
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Fully controlled progress ring with no hidden padding or minimum height.
+class _CompactTripProgress extends StatelessWidget {
+  const _CompactTripProgress({
+    required this.fraction,
+    required this.completed,
+    required this.label,
+    required this.size,
+  });
+
+  final double fraction;
+  final bool completed;
+  final String label;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = completed ? CaptainTheme.success : CaptainTheme.accent;
+    final safeFraction = fraction.clamp(0.0, 1.0).toDouble();
+
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox.expand(
+            child: CircularProgressIndicator(
+              value: safeFraction,
+              strokeWidth: 5,
+              strokeCap: StrokeCap.round,
+              backgroundColor: CaptainTheme.hairline.withValues(alpha: 0.65),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: size - 16,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                        color: CaptainTheme.strongText,
+                        height: 1.0,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  completed ? 'DONE' : 'STOPS',
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 7.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.35,
+                    color: CaptainTheme.mutedText,
+                    height: 1.0,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -302,23 +1014,21 @@ class _QuickActionsRow extends StatelessWidget {
       required VoidCallback onTap,
     }) {
       return Expanded(
-        child: CaptainGlassCard(
+        child: InkWell(
           onTap: onTap,
-          padding: const EdgeInsets.symmetric(vertical: 14),
           borderRadius: const BorderRadius.all(Radius.circular(16)),
-          child: SizedBox(
-            width: double.infinity,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Image icon sits directly on the glass card — no inner plate.
                 Image.asset(
                   iconAsset,
-                  width: 60,
-                  height: 60,
+                  width: 76,
+                  height: 76,
                   fit: BoxFit.contain,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Text(
                   label,
                   style: TextStyle(
@@ -337,19 +1047,19 @@ class _QuickActionsRow extends StatelessWidget {
     return Row(
       children: [
         action(
-          iconAsset: 'assets/icons/navigate.png',
+          iconAsset: 'assets/icons/navigate1.png',
           label: 'Navigate',
           onTap: onOpenMap,
         ),
         const SizedBox(width: 10),
         action(
-          iconAsset: 'assets/icons/scan.png',
+          iconAsset: 'assets/icons/scan1.png',
           label: 'Scan',
           onTap: onScan,
         ),
         const SizedBox(width: 10),
         action(
-          iconAsset: 'assets/icons/history.png',
+          iconAsset: 'assets/icons/history11.png',
           label: 'History',
           onTap: onHistory,
         ),
@@ -374,9 +1084,21 @@ class _StopsTimeline extends StatelessWidget {
       ..sort((a, b) => a.sequence.compareTo(b.sequence));
     if (stops.isEmpty) {
       return CaptainGlassCard(
-        child: Text(
-          'No collection points on this trip yet.',
-          style: TextStyle(color: CaptainTheme.mutedText),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset(
+              'assets/images/no_assignments.png',
+              height: 150,
+              fit: BoxFit.contain,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'No collection points on this trip yet.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: CaptainTheme.mutedText),
+            ),
+          ],
         ),
       );
     }
@@ -658,6 +1380,268 @@ enum _StopTone {
   pending,
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Household stops (household / bulk-waste trips) — same timeline look as the
+// bin collection points, but each tile is a customer and the collect method is
+// the household weight-capture screen instead of a bin scan.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _HouseholdTimeline extends StatelessWidget {
+  const _HouseholdTimeline({required this.trip, required this.onChanged});
+
+  final OperatorTripToday trip;
+  final Future<void> Function() onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final stops = [...trip.householdCollections]
+      ..sort((a, b) => a.sequence.compareTo(b.sequence));
+    if (stops.isEmpty) {
+      return CaptainGlassCard(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset(
+              'assets/images/no_assignments.png',
+              height: 150,
+              fit: BoxFit.contain,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'No households on this trip yet.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: CaptainTheme.mutedText),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final nextIndex = stops.indexWhere((s) => !s.isCollected);
+
+    return Column(
+      children: [
+        for (var i = 0; i < stops.length; i++)
+          _HouseholdTile(
+            stop: stops[i],
+            assignmentId: trip.assignmentUniqueId,
+            isFirst: i == 0,
+            isLast: i == stops.length - 1,
+            isNext: i == nextIndex,
+            onChanged: onChanged,
+          ),
+      ],
+    );
+  }
+}
+
+class _HouseholdTile extends StatelessWidget {
+  const _HouseholdTile({
+    required this.stop,
+    required this.assignmentId,
+    required this.isFirst,
+    required this.isLast,
+    required this.isNext,
+    required this.onChanged,
+  });
+
+  final OperatorTripHouseholdStop stop;
+  final String assignmentId;
+  final bool isFirst;
+  final bool isLast;
+  final bool isNext;
+  final Future<void> Function() onChanged;
+
+  _StopTone get _tone {
+    if (stop.isCollected) return _StopTone.collected;
+    switch (stop.status.toLowerCase()) {
+      case 'collect later':
+      case 'skipped':
+        return _StopTone.skipped;
+      case 'not available':
+      case 'missed':
+      case 'not collected':
+        return _StopTone.missed;
+      default:
+        return isNext ? _StopTone.next : _StopTone.pending;
+    }
+  }
+
+  // Premium violet accent — households get a purple identity, distinct from the
+  // blue/gold bin collection points.
+  static const Color _accent = Color(0xFF8B5CF6);
+
+  @override
+  Widget build(BuildContext context) {
+    final tone = _tone;
+    final done = tone == _StopTone.collected;
+    final skipped = tone == _StopTone.skipped;
+    final missed = tone == _StopTone.missed;
+    final nodeColor = switch (tone) {
+      _StopTone.collected => CaptainTheme.success,
+      _StopTone.skipped => CaptainTheme.warning, // collect later → amber
+      _StopTone.missed => CaptainTheme.danger, // not available → red
+      _StopTone.next => _accent,
+      _StopTone.pending => _accent.withValues(alpha: 0.55),
+    };
+    // Status color drives the card tint, subtitle and trailing icon:
+    // green = collected, amber = collect later, red = not available, purple
+    // otherwise (next / pending).
+    final statusColor = switch (tone) {
+      _StopTone.collected => CaptainTheme.success,
+      _StopTone.skipped => CaptainTheme.warning,
+      _StopTone.missed => CaptainTheme.danger,
+      _StopTone.next => _accent,
+      _StopTone.pending => _accent,
+    };
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Timeline rail (mirrors the bin stop tile).
+          SizedBox(
+            width: 34,
+            child: Column(
+              children: [
+                Expanded(
+                  child: Container(
+                    width: 2.4,
+                    color: isFirst
+                        ? Colors.transparent
+                        : CaptainTheme.hairline.withValues(alpha: 0.8),
+                  ),
+                ),
+                Container(
+                  width: 22,
+                  height: 22,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: done ? CaptainTheme.success : CaptainTheme.surface,
+                    border: Border.all(color: nodeColor, width: 2.4),
+                    boxShadow: isNext && !skipped && !missed
+                        ? [
+                            BoxShadow(
+                              color: _accent.withValues(alpha: 0.5),
+                              blurRadius: 9,
+                              spreadRadius: 1,
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: done
+                      ? Icon(Icons.check_rounded,
+                          size: 14, color: CaptainTheme.onAccent)
+                      : Icon(Icons.home_rounded, size: 11, color: nodeColor),
+                ),
+                Expanded(
+                  child: Container(
+                    width: 2.4,
+                    color: isLast
+                        ? Colors.transparent
+                        : CaptainTheme.hairline.withValues(alpha: 0.8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              child: CaptainGlassCard(
+                onTap: () => _openHouseholdCollection(context),
+                // green = collected · amber = collect later · red = not
+                // available · purple = pending/next.
+                tint: statusColor,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                borderRadius: const BorderRadius.all(Radius.circular(16)),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            stop.customerName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: CaptainTheme.strongText,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            done
+                                ? 'Collected'
+                                    '${stop.collectedWeightKg != null ? ' • ${stop.collectedWeightKg!.toStringAsFixed(1)} kg' : ''}'
+                                    '${stop.collectedAt != null ? ' • ${TimeOfDay.fromDateTime(stop.collectedAt!.toLocal()).format(context)}' : ''}'
+                                : skipped
+                                    ? 'Collect later'
+                                    : missed
+                                        ? 'Not available'
+                                        : (isNext
+                                            ? 'Next household — tap to collect'
+                                            : (stop.address ??
+                                                'Household ${stop.sequence}')),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: tone == _StopTone.pending
+                                  ? CaptainTheme.mutedText
+                                  : statusColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      done
+                          ? Icons.verified_rounded
+                          : (skipped || missed)
+                              ? Icons.error_outline_rounded
+                              : Icons.chevron_right_rounded,
+                      color: statusColor,
+                      size: 20,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Open the customer action drawer (Collect / Collect later / Not available)
+  /// — the same sheet the QR scan shows — then ALWAYS refresh the list so the
+  /// tile reflects the backend (turns green when collected, red/orange when
+  /// not-available / collect-later). We refresh unconditionally because the
+  /// collect screen's return value isn't reliable (back button vs "Back to
+  /// home" return different things), and the source of truth is the backend.
+  Future<void> _openHouseholdCollection(BuildContext context) async {
+    await showHouseholdActionSheet(
+      context,
+      customerId: stop.customerUniqueId,
+      customerName: stop.customerName,
+      contactNo: stop.contactNo ?? '',
+      latitude: stop.latitude?.toString() ?? '',
+      longitude: stop.longitude?.toString() ?? '',
+      assignmentId: assignmentId,
+      currentStatus: stop.isCollected ? 'collected' : stop.status,
+    );
+    await onChanged();
+  }
+}
+
 /// Human-friendly messages for the operator-mobile error codes.
 String friendlyTripError(OperatorTripException e) {
   switch (e.code) {
@@ -679,166 +1663,6 @@ String friendlyTripError(OperatorTripException e) {
       return 'Cannot reach the server. Check your connection.';
     default:
       return e.message.isEmpty ? 'Something went wrong.' : e.message;
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Crew card
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _CrewCard extends StatelessWidget {
-  const _CrewCard({required this.crew});
-
-  final OperatorTripCrew crew;
-
-  @override
-  Widget build(BuildContext context) {
-    final members = <OperatorTripCrewMember>[
-      if (crew.driver != null) crew.driver!,
-      ...crew.operators,
-    ];
-
-    return CaptainGlassCard(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (crew.isAltActive)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  Icon(Icons.swap_horiz_rounded,
-                      size: 14, color: CaptainTheme.warning),
-                  const SizedBox(width: 5),
-                  Text(
-                    'Substitute crew active today',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: CaptainTheme.warning.withValues(alpha: 0.95),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          for (final member in members) _CrewMemberRow(member: member),
-        ],
-      ),
-    );
-  }
-}
-
-class _CrewMemberRow extends StatelessWidget {
-  const _CrewMemberRow({required this.member});
-
-  final OperatorTripCrewMember member;
-
-  bool get _isDriver => (member.role ?? '').toLowerCase().contains('driver');
-
-  @override
-  Widget build(BuildContext context) {
-    final roleColor = _isDriver ? CaptainTheme.accent : CaptainTheme.info;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                colors: [
-                  roleColor.withValues(alpha: 0.22),
-                  roleColor.withValues(alpha: 0.10),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              border: Border.all(color: roleColor.withValues(alpha: 0.45)),
-              image: (member.photoUrl != null && member.photoUrl!.isNotEmpty)
-                  ? DecorationImage(
-                      image: NetworkImage(member.photoUrl!),
-                      fit: BoxFit.cover,
-                    )
-                  : null,
-            ),
-            child: (member.photoUrl == null || member.photoUrl!.isEmpty)
-                ? Text(
-                    member.initials,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: roleColor,
-                    ),
-                  )
-                : null,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  member.displayName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                    color: CaptainTheme.strongText,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 1.5),
-                      decoration: BoxDecoration(
-                        color: roleColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        _isDriver ? 'Captain' : member.roleLabel,
-                        style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.3,
-                          color: roleColor,
-                        ),
-                      ),
-                    ),
-                    if (member.phone != null &&
-                        member.phone!.trim().isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      Icon(Icons.phone_rounded,
-                          size: 11, color: CaptainTheme.mutedText),
-                      const SizedBox(width: 3),
-                      Flexible(
-                        child: Text(
-                          member.phone!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: CaptainTheme.mutedText,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 
@@ -881,20 +1705,25 @@ class _SectionTitle extends StatelessWidget {
 
 class _MessageView extends StatelessWidget {
   const _MessageView({
-    required this.icon,
-    required this.iconColor,
+    this.icon,
+    this.iconColor,
     required this.title,
     required this.message,
     required this.actionLabel,
     required this.onAction,
+    this.imageAsset,
   });
 
-  final IconData icon;
-  final Color iconColor;
+  final IconData? icon;
+  final Color? iconColor;
   final String title;
   final String message;
   final String actionLabel;
   final Future<void> Function() onAction;
+
+  /// Optional illustration shown instead of the icon chip (e.g. the
+  /// "no assignments" artwork on the empty trip state).
+  final String? imageAsset;
 
   @override
   Widget build(BuildContext context) {
@@ -912,11 +1741,18 @@ class _MessageView extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  CaptainGlassChip(
-                      icon: icon,
-                      color: iconColor,
-                      size: 30,
-                      padding: const EdgeInsets.all(14)),
+                  if (imageAsset != null)
+                    Image.asset(
+                      imageAsset!,
+                      height: 180,
+                      fit: BoxFit.contain,
+                    )
+                  else if (icon != null)
+                    CaptainGlassChip(
+                        icon: icon!,
+                        color: iconColor ?? CaptainTheme.accent,
+                        size: 30,
+                        padding: const EdgeInsets.all(14)),
                   const SizedBox(height: 14),
                   Text(
                     title,

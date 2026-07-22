@@ -62,7 +62,7 @@ class _OperatorHeaderState extends State<OperatorHeader> {
     try {
       final request = await client
           .getUrl(
-            Uri.parse('${ApiConfig.desktopBase}staff-profile/').replace(
+            Uri.parse('${ApiConfig.attendanceBase}staff-profile/').replace(
               queryParameters: {'staff_id_id': widget.empId},
             ),
           )

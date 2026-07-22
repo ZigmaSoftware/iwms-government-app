@@ -207,7 +207,7 @@ class _AttendancePageState extends State<AttendancePage>
     try {
       final dio = await authorizedDio();
       final res = await dio.get(
-        '${ApiConfig.desktopBase}attendance-list/today/',
+        '${ApiConfig.attendanceBase}daily-attendance/today/',
         queryParameters: {'emp_id': id},
       );
       final data = res.data;
@@ -233,7 +233,7 @@ class _AttendancePageState extends State<AttendancePage>
       final now = DateTime.now();
       final dio = await authorizedDio();
       final res = await dio.get(
-        '${ApiConfig.desktopBase}attendance-list/summary/',
+        '${ApiConfig.attendanceBase}daily-attendance/summary/',
         queryParameters: {'emp_id': id, 'month': now.month, 'year': now.year},
       );
       final data = res.data;
@@ -800,7 +800,7 @@ class _DriverAvatarState extends State<DriverAvatar> {
     try {
       final dio = await authorizedDio();
       final response = await dio.get(
-        '${ApiConfig.desktopBase}staff-profile/',
+        '${ApiConfig.attendanceBase}staff-profile/',
         queryParameters: {'staff_id_id': widget.empId},
       );
       final json = response.data;

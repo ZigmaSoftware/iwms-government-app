@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:iwms_citizen_app/core/api_config.dart';
 import 'package:iwms_citizen_app/core/env.dart';
 import 'package:iwms_citizen_app/core/network/authorized_dio.dart';
+import 'package:iwms_citizen_app/modules/module2_driver/presentation/state/collection_mode_store.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/theme/captain_theme.dart';
 import 'package:iwms_citizen_app/modules/module3_operator/presentation/screens/attendance/profile.dart';
 
@@ -27,6 +28,9 @@ class DriverHeader extends StatefulWidget {
     this.locationLabel,
     this.onProfileTap,
     this.collapsed = false,
+    this.showCollectionModeToggle = true,
+    required this.collectionMode,
+    required this.onCollectionModeChanged,
   });
 
   final String name;
@@ -39,10 +43,13 @@ class DriverHeader extends StatefulWidget {
   final String? locationLabel;
   final VoidCallback onLogout;
   final VoidCallback? onProfileTap;
+  final CollectionMode collectionMode;
+  final ValueChanged<CollectionMode> onCollectionModeChanged;
 
   /// When true the header renders as a slim tucked bar (used on the Map tab
   /// to maximise map visibility).
   final bool collapsed;
+  final bool showCollectionModeToggle;
 
   @override
   State<DriverHeader> createState() => _DriverHeaderState();
@@ -72,14 +79,19 @@ class _DriverHeaderState extends State<DriverHeader> {
     try {
       final dio = await authorizedDio();
       final response = await dio.get(
-        '${ApiConfig.desktopBase}staff-profile/',
+        '${ApiConfig.attendanceBase}staff-profile/',
         queryParameters: {'staff_id_id': widget.empId},
       );
       final json = response.data;
       if (json is Map && json['status'] == 'success') {
         if (!mounted) return;
+        final data = json['data'];
+        // Prefer the face registered for attendance; fall back to an
+        // admin-uploaded staff photo when no face has been registered.
+        final registered = data?['attendance_reg_image']?.toString() ?? '';
+        final staffPhoto = data?['photo']?.toString() ?? '';
         setState(() {
-          imageName = json['data']?['photo'] ?? '';
+          imageName = registered.isNotEmpty ? registered : staffPhoto;
           hasProfile = imageName != null && imageName!.isNotEmpty;
           imageLoading = false;
         });
@@ -101,6 +113,12 @@ class _DriverHeaderState extends State<DriverHeader> {
 
   String _convertToUrl(String path) {
     final clean = path.replaceAll('\\', '/');
+    // Already an absolute URL → use as-is.
+    if (clean.startsWith('http')) return clean;
+    // The API serializes ImageFields to their `.url` (e.g. "/media/..."), so it
+    // already carries the /media/ prefix — just join to the origin. Only a bare
+    // relative path (no leading slash) needs /media/ added.
+    if (clean.startsWith('/')) return '$_baseUrl$clean';
     return '$_baseUrl/media/$clean';
   }
 
@@ -135,16 +153,58 @@ class _DriverHeaderState extends State<DriverHeader> {
           padding: widget.collapsed
               ? const EdgeInsets.fromLTRB(14, 6, 12, 6)
               : const EdgeInsets.fromLTRB(16, 12, 14, 14),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _buildAvatarButton(compact: widget.collapsed),
-              const SizedBox(width: 11),
-              Expanded(child: _buildIdentity(compact: widget.collapsed)),
-              const SizedBox(width: 8),
-              _logoutButton(compact: widget.collapsed),
+              Row(
+                children: [
+                  _buildAvatarButton(compact: widget.collapsed),
+                  const SizedBox(width: 11),
+                  Expanded(child: _buildIdentity(compact: widget.collapsed)),
+                  const SizedBox(width: 8),
+                  _logoutButton(compact: widget.collapsed),
+                ],
+              ),
+              if (widget.showCollectionModeToggle) ...[
+                const SizedBox(height: 12),
+                _buildCollectionModeToggle(),
+              ],
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildCollectionModeToggle() {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _ModeSegment(
+              label: 'Household',
+              icon: Icons.home_work_rounded,
+              selected: widget.collectionMode == CollectionMode.household,
+              onTap: () =>
+                  widget.onCollectionModeChanged(CollectionMode.household),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: _ModeSegment(
+              label: 'Bin collection',
+              icon: Icons.delete_outline_rounded,
+              selected: widget.collectionMode == CollectionMode.bin,
+              onTap: () => widget.onCollectionModeChanged(CollectionMode.bin),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -319,6 +379,72 @@ class _DriverHeaderState extends State<DriverHeader> {
                           ],
                         ))
                   : null,
+        ),
+      ),
+    );
+  }
+}
+
+class _ModeSegment extends StatelessWidget {
+  const _ModeSegment({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? Colors.white : Colors.white.withValues(alpha: 0.02),
+      borderRadius: BorderRadius.circular(11),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(11),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(
+              color: selected
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.12),
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: selected
+                    ? CaptainTheme.primary
+                    : Colors.white.withValues(alpha: 0.9),
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: selected
+                        ? CaptainTheme.primary
+                        : Colors.white.withValues(alpha: 0.94),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

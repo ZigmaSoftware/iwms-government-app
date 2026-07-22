@@ -39,6 +39,48 @@ class OperatorTripWasteType {
     );
   }
 
+  /// Resolves the trip's waste type from either the current backend shape —
+  /// `waste_types` (a list, since a trip can now carry multiple types) — or the
+  /// legacy singular `waste_type` (a map). Returns a non-null placeholder when
+  /// neither is present, so callers never crash on a missing/typed-null field.
+  ///
+  /// When multiple types are present, the first is used as the primary label
+  /// and [names] can be read for the full set.
+  static OperatorTripWasteType resolve(Map<String, dynamic> json) {
+    final list = json['waste_types'];
+    if (list is List && list.isNotEmpty && list.first is Map) {
+      return OperatorTripWasteType.fromJson(
+        Map<String, dynamic>.from(list.first as Map),
+      );
+    }
+    final single = json['waste_type'];
+    if (single is Map) {
+      return OperatorTripWasteType.fromJson(
+        Map<String, dynamic>.from(single),
+      );
+    }
+    return const OperatorTripWasteType(uniqueId: '', name: '');
+  }
+
+  /// All waste-type names for a trip (new plural shape), falling back to the
+  /// single legacy type. Empty if none present.
+  static List<String> names(Map<String, dynamic> json) {
+    final list = json['waste_types'];
+    if (list is List) {
+      return list
+          .whereType<Map>()
+          .map((e) => e['name']?.toString() ?? '')
+          .where((n) => n.isNotEmpty)
+          .toList();
+    }
+    final single = json['waste_type'];
+    if (single is Map) {
+      final n = single['name']?.toString() ?? '';
+      return n.isEmpty ? const [] : [n];
+    }
+    return const [];
+  }
+
   bool get isWet => name.toLowerCase().contains('wet');
   bool get isDry => name.toLowerCase().contains('dry');
 }
@@ -148,6 +190,19 @@ class OperatorTripCollectionPoint {
     this.collectedWeightKg,
   });
 
+  OperatorTripCollectionPoint copyWith({int? sequence}) =>
+      OperatorTripCollectionPoint(
+        uniqueId: uniqueId,
+        sequence: sequence ?? this.sequence,
+        isCollected: isCollected,
+        status: status,
+        collectionPoint: collectionPoint,
+        bin: bin,
+        statusReason: statusReason,
+        collectedAt: collectedAt,
+        collectedWeightKg: collectedWeightKg,
+      );
+
   factory OperatorTripCollectionPoint.fromJson(Map<String, dynamic> json) {
     return OperatorTripCollectionPoint(
       uniqueId: json['unique_id']?.toString() ?? '',
@@ -163,6 +218,61 @@ class OperatorTripCollectionPoint {
       bin: OperatorTripBinBrief.fromJson(
         Map<String, dynamic>.from(json['bin'] as Map),
       ),
+    );
+  }
+}
+
+/// A household stop (customer) on a household / bulk-waste trip. The driver
+/// collects each household directly (weight capture) instead of scanning a bin.
+class OperatorTripHouseholdStop {
+  final String uniqueId;
+  final int sequence;
+  final bool isCollected;
+  final String status;
+  final String? statusReason;
+  final DateTime? collectedAt;
+  final double? collectedWeightKg;
+  final String customerUniqueId;
+  final String customerName;
+  final String? contactNo;
+  final String? address;
+  final double? latitude;
+  final double? longitude;
+
+  const OperatorTripHouseholdStop({
+    required this.uniqueId,
+    required this.sequence,
+    required this.isCollected,
+    required this.status,
+    required this.customerUniqueId,
+    required this.customerName,
+    this.statusReason,
+    this.collectedAt,
+    this.collectedWeightKg,
+    this.contactNo,
+    this.address,
+    this.latitude,
+    this.longitude,
+  });
+
+  factory OperatorTripHouseholdStop.fromJson(Map<String, dynamic> json) {
+    final customer = json['customer'] is Map
+        ? Map<String, dynamic>.from(json['customer'] as Map)
+        : const <String, dynamic>{};
+    return OperatorTripHouseholdStop(
+      uniqueId: json['unique_id']?.toString() ?? '',
+      sequence: _parseInt(json['sequence']) ?? 0,
+      isCollected: json['is_collected'] == true,
+      status: json['status']?.toString() ?? 'Pending',
+      statusReason: json['status_reason']?.toString(),
+      collectedAt: _parseDate(json['collected_at']),
+      collectedWeightKg: _parseDouble(json['collected_weight_kg']),
+      customerUniqueId: customer['unique_id']?.toString() ?? '',
+      customerName: customer['name']?.toString() ?? 'Household',
+      contactNo: customer['contact_no']?.toString(),
+      address: customer['address']?.toString(),
+      latitude: _parseDouble(customer['latitude']),
+      longitude: _parseDouble(customer['longitude']),
     );
   }
 }
@@ -229,6 +339,11 @@ class OperatorTripToday {
   // Everyone working this vehicle today (driver + operator + extras). The
   // merged driver app renders this read-only so the driver knows their crew.
   final OperatorTripCrew? crew;
+  // bin_collection / household_collection / bulk_waste_collection — drives the
+  // collection-type pill on the trip header.
+  final String? collectionType;
+  // Household stops (customers) for household/bulk trips. Empty for bin trips.
+  final List<OperatorTripHouseholdStop> householdCollections;
 
   const OperatorTripToday({
     required this.assignmentUniqueId,
@@ -237,6 +352,8 @@ class OperatorTripToday {
     required this.wasteType,
     required this.progress,
     required this.collectionPoints,
+    this.collectionType,
+    this.householdCollections = const [],
     this.panchayat,
     this.ward,
     this.vehicle,
@@ -251,8 +368,54 @@ class OperatorTripToday {
     this.crew,
   });
 
+  /// Returns a copy of this trip with a different set of collection points
+  /// (used to apply a route-order re-sequence shared by the list and the map).
+  OperatorTripToday withCollectionPoints(
+          List<OperatorTripCollectionPoint> points) =>
+      OperatorTripToday(
+        assignmentUniqueId: assignmentUniqueId,
+        tripDate: tripDate,
+        status: status,
+        wasteType: wasteType,
+        progress: progress,
+        collectionPoints: points,
+        collectionType: collectionType,
+        householdCollections: householdCollections,
+        panchayat: panchayat,
+        ward: ward,
+        vehicle: vehicle,
+        tripPlan: tripPlan,
+        distanceMeters: distanceMeters,
+        durationSeconds: durationSeconds,
+        routeGeojson: routeGeojson,
+        vehicleStart: vehicleStart,
+        scheduledTime: scheduledTime,
+        actualStartTime: actualStartTime,
+        actualEndTime: actualEndTime,
+        crew: crew,
+      );
+
   /// Display name for the trip's service area (panchayat or ward).
   String get areaName => panchayat?.name ?? ward?.name ?? '—';
+
+  /// True for household / bulk-waste trips, which collect customers directly
+  /// (no bins). Drives the adaptive list on the driver home.
+  bool get isHousehold =>
+      collectionType == 'household_collection' ||
+      collectionType == 'bulk_waste_collection';
+
+  String get assignmentTypeLabel {
+    switch (collectionType) {
+      case 'household_collection':
+        return 'Household';
+      case 'bulk_waste_collection':
+        return 'Bulk Waste';
+      case 'bin_collection':
+        return 'Bin';
+      default:
+        return '';
+    }
+  }
 
   /// Total weight collected so far, summed from the per-collection-point
   /// weights in today's payload. `my-trip-today` doesn't ship an aggregate
@@ -283,6 +446,7 @@ class OperatorTripToday {
       tripPlan: tripPlan,
       progress: progress,
       totalWeightKg: totalCollectedWeightKg,
+      collectionType: collectionType,
     );
   }
 
@@ -302,7 +466,14 @@ class OperatorTripToday {
     return OperatorTripToday(
       assignmentUniqueId: json['assignment_unique_id']?.toString() ?? '',
       tripDate: DateTime.parse(json['trip_date'].toString()),
-      status: json['status']?.toString() ?? 'Scheduled',
+      status: json['status']?.toString() ?? '',
+      collectionType: json['collection_type']?.toString(),
+      householdCollections: (json['household_collections'] as List? ?? [])
+          .whereType<Map>()
+          .map((e) => OperatorTripHouseholdStop.fromJson(
+                Map<String, dynamic>.from(e),
+              ))
+          .toList(),
       scheduledTime: json['scheduled_time']?.toString(),
       actualStartTime: json['actual_start_time']?.toString(),
       actualEndTime: json['actual_end_time']?.toString(),
@@ -316,13 +487,9 @@ class OperatorTripToday {
               Map<String, dynamic>.from(json['ward'] as Map),
             )
           : null,
-      // Multi-waste-type trips can ship `waste_type: null`; fall back to a
-      // harmless placeholder instead of crashing the parse.
-      wasteType: json['waste_type'] is Map
-          ? OperatorTripWasteType.fromJson(
-              Map<String, dynamic>.from(json['waste_type'] as Map),
-            )
-          : const OperatorTripWasteType(uniqueId: '', name: ''),
+      // Backend now sends `waste_types` (plural list); resolve handles both
+      // that and the legacy singular `waste_type`, never crashing on null.
+      wasteType: OperatorTripWasteType.resolve(json),
       vehicle: json['vehicle'] is Map<String, dynamic>
           ? OperatorTripVehicle.fromJson(
               Map<String, dynamic>.from(json['vehicle'] as Map),
@@ -365,6 +532,8 @@ class OperatorTripCrewMember {
   final String? role;
   final String? phone;
   final String? photoUrl;
+  final bool isPresent;
+  final String? attendanceStatus;
 
   const OperatorTripCrewMember({
     required this.uniqueId,
@@ -373,6 +542,8 @@ class OperatorTripCrewMember {
     this.role,
     this.phone,
     this.photoUrl,
+    this.isPresent = false,
+    this.attendanceStatus,
   });
 
   String get displayName => (name?.trim().isNotEmpty == true) ? name! : '—';
@@ -410,6 +581,8 @@ class OperatorTripCrewMember {
       role: json['role']?.toString(),
       phone: json['phone']?.toString(),
       photoUrl: json['photo_url']?.toString(),
+      isPresent: json['is_present'] == true,
+      attendanceStatus: json['attendance_status']?.toString(),
     );
   }
 }
@@ -619,6 +792,7 @@ class OperatorTripHistorySummary {
   final DateTime tripDate;
   final String status;
   final String? approvalStatus;
+  final String? collectionType;
   final String? scheduledTime;
   final String? actualStartTime;
   final String? actualEndTime;
@@ -639,6 +813,7 @@ class OperatorTripHistorySummary {
     required this.wasteType,
     required this.progress,
     required this.totalWeightKg,
+    this.collectionType,
     this.approvalStatus,
     this.scheduledTime,
     this.actualStartTime,
@@ -657,6 +832,23 @@ class OperatorTripHistorySummary {
   bool get isInProgress => status.toLowerCase() == 'in progress';
   bool get isScheduled => status.toLowerCase() == 'scheduled';
   bool get isCancelled => status.toLowerCase() == 'cancelled';
+  bool get isHouseholdCollection =>
+      collectionType == 'household_collection' ||
+      collectionType == 'bulk_waste_collection';
+  bool get isBinCollection => collectionType == 'bin_collection';
+
+  String get assignmentTypeLabel {
+    switch (collectionType) {
+      case 'household_collection':
+        return 'Household';
+      case 'bulk_waste_collection':
+        return 'Bulk Waste';
+      case 'bin_collection':
+        return 'Bin';
+      default:
+        return '';
+    }
+  }
 
   /// Estimated duration if both start + end are known.
   Duration? get duration {
@@ -673,6 +865,7 @@ class OperatorTripHistorySummary {
       tripDate: DateTime.parse(json['trip_date'].toString()),
       status: json['status']?.toString() ?? '',
       approvalStatus: json['approval_status']?.toString(),
+      collectionType: json['collection_type']?.toString(),
       scheduledTime: json['scheduled_time']?.toString(),
       actualStartTime: json['actual_start_time']?.toString(),
       actualEndTime: json['actual_end_time']?.toString(),
@@ -702,9 +895,9 @@ class OperatorTripHistorySummary {
             )
           : null,
       remarks: json['remarks']?.toString(),
-      wasteType: OperatorTripWasteType.fromJson(
-        Map<String, dynamic>.from(json['waste_type'] as Map),
-      ),
+      // Backend now sends `waste_types` (plural list); resolve handles both
+      // that and the legacy singular `waste_type`, never crashing on null.
+      wasteType: OperatorTripWasteType.resolve(json),
       progress: OperatorTripProgress.fromJson(
         Map<String, dynamic>.from(json['progress'] as Map),
       ),

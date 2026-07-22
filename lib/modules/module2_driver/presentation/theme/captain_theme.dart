@@ -9,14 +9,16 @@ class CaptainThemeStore {
   CaptainThemeStore._();
 
   static const String _prefsKey = 'captain_dark_mode';
-  static final ValueNotifier<bool> isDark = ValueNotifier<bool>(true);
+  static final ValueNotifier<bool> isDark = ValueNotifier<bool>(false);
 
   static Future<void> load() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      isDark.value = prefs.getBool(_prefsKey) ?? true;
+      // First login (no saved pref) → light mode. Existing users keep their
+      // saved choice because getBool returns the stored value when present.
+      isDark.value = prefs.getBool(_prefsKey) ?? false;
     } catch (_) {
-      // Keep the default (dark) if prefs are unavailable.
+      // Keep the default (light) if prefs are unavailable.
     }
   }
 

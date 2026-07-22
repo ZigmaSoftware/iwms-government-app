@@ -7,14 +7,15 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:iwms_citizen_app/core/api_config.dart';
 import 'package:iwms_citizen_app/core/di.dart';
-import 'package:iwms_citizen_app/core/geofence_config.dart';
 import 'package:iwms_citizen_app/core/network/authorized_dio.dart';
+import 'package:iwms_citizen_app/core/push/push_notification_service.dart';
 import 'package:iwms_citizen_app/core/ui/app_flash.dart';
 import 'package:iwms_citizen_app/data/models/vehicle_model.dart';
 import 'package:iwms_citizen_app/data/repositories/auth_repository.dart';
 import 'package:iwms_citizen_app/localization/app_localizations.dart';
 import 'package:iwms_citizen_app/logic/vehicle_tracking/vehicle_bloc.dart';
 import 'package:motion_tab_bar/MotionTabBar.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:iwms_citizen_app/modules/module1_citizen/citizen/dashboard/banner/controllers/banner_controller.dart';
 import 'package:iwms_citizen_app/modules/module1_citizen/citizen/dashboard/banner/models/banner_slide.dart';
 import 'package:iwms_citizen_app/modules/module1_citizen/citizen/dashboard/banner/services/banner_service.dart';
@@ -54,7 +55,10 @@ class _CitizenDashboardPageState extends State<CitizenDashboardPage>
   late final HomeNavController _navController;
   late final GeofenceEvaluator _geofenceEvaluator;
   late final AuthRepository _authRepository;
-  DateTime? _lastGeofenceAlertAt;
+  bool _wasVehicleInsideGeofence = false;
+  static const String _geofenceAlertPrefsKey =
+      'citizen_geofence_last_alert_gamma';
+  static const Duration _geofenceAlertCooldown = Duration(minutes: 20);
   String? _userId;
   final Set<String> _notifiedCitizenAssignments = {};
 
@@ -87,6 +91,9 @@ class _CitizenDashboardPageState extends State<CitizenDashboardPage>
     });
     if (user?.userId != null && user!.userId.trim().isNotEmpty) {
       unawaited(_fetchCitizenAssignments(user.userId.trim()));
+      // Instant collection-status push notifications. Safe no-op until
+      // Firebase is configured — see push_notification_service.dart.
+      unawaited(PushNotificationService.instance.initAndRegister());
     }
   }
 
@@ -245,7 +252,7 @@ class _CitizenDashboardPageState extends State<CitizenDashboardPage>
       listenWhen: (previous, current) => current is VehicleLoaded,
       listener: (context, state) {
         if (state is VehicleLoaded) {
-          _evaluateGeofence(state.vehicles);
+          unawaited(_evaluateGeofence(state.vehicles));
         }
       },
       child: Scaffold(
@@ -265,43 +272,59 @@ class _CitizenDashboardPageState extends State<CitizenDashboardPage>
             );
           },
         ),
-        bottomNavigationBar: SafeArea(
-          child: KeyedSubtree(
-            key: ValueKey(navLabels.join('-')),
-            child: MotionTabBar(
-              labels: navLabels,
-              textStyle: navTextStyle,
-              icons: const [
-                Icons.home_outlined,
-                Icons.delete_outline,
-                Icons.map_outlined,
-                Icons.person_outline,
-              ],
-              tabBarColor:
-                  isDarkMode ? CitizenDashboardPage.darkSurface : Colors.white,
-              tabSelectedColor: highlightColor,
-              tabIconColor: isDarkMode ? Colors.white54 : Colors.black54,
-              tabBarHeight: 64,
-              tabSize: 52,
-              tabIconSize: 22,
-              tabIconSelectedSize: 24,
-              initialSelectedTab:
-                  _labelForNav(_navController.active, localizations),
-              onTabItemSelected: (value) {
-                int? index;
-                if (value is int) {
-                  index = value;
-                } else if (value is String) {
-                  index = navLabels.indexOf(value);
-                }
-                if (index != null &&
-                    index >= 0 &&
-                    index < navLabels.length) {
-                  _navController.setItem(_navFromIndex(index));
-                }
-              },
-            ),
-          ),
+        bottomNavigationBar: AnimatedBuilder(
+          animation: _navController,
+          builder: (context, _) {
+            // Keyed on the active tab so MotionTabBar fully remounts (and
+            // re-reads initialSelectedTab) whenever the active tab changes
+            // for any reason — including programmatic navigation like the
+            // "Track Vehicles" quick action or the Home stats tap, not just
+            // a direct tap on the bar itself. Without this, the bar's own
+            // internal selected index drifts out of sync with
+            // _navController, and a later tap on the tab it *thinks* is
+            // already selected gets silently swallowed by the library.
+            return SafeArea(
+              child: KeyedSubtree(
+                key: ValueKey(
+                  '${navLabels.join('-')}-${_navController.active}',
+                ),
+                child: MotionTabBar(
+                  labels: navLabels,
+                  textStyle: navTextStyle,
+                  icons: const [
+                    Icons.home_outlined,
+                    Icons.delete_outline,
+                    Icons.map_outlined,
+                    Icons.person_outline,
+                  ],
+                  tabBarColor: isDarkMode
+                      ? CitizenDashboardPage.darkSurface
+                      : Colors.white,
+                  tabSelectedColor: highlightColor,
+                  tabIconColor: isDarkMode ? Colors.white54 : Colors.black54,
+                  tabBarHeight: 64,
+                  tabSize: 52,
+                  tabIconSize: 22,
+                  tabIconSelectedSize: 24,
+                  initialSelectedTab:
+                      _labelForNav(_navController.active, localizations),
+                  onTabItemSelected: (value) {
+                    int? index;
+                    if (value is int) {
+                      index = value;
+                    } else if (value is String) {
+                      index = navLabels.indexOf(value);
+                    }
+                    if (index != null &&
+                        index >= 0 &&
+                        index < navLabels.length) {
+                      _navController.setItem(_navFromIndex(index));
+                    }
+                  },
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -355,28 +378,37 @@ class _CitizenDashboardPageState extends State<CitizenDashboardPage>
     ];
   }
 
-  void _evaluateGeofence(List<VehicleModel> vehicles) {
+  /// Fires once per geofence-entry transition (not on every ~15s vehicle
+  /// poll while the truck stays inside), and the cooldown is persisted to
+  /// disk so navigating away/back or restarting the app doesn't cause an
+  /// immediate repeat alert for a truck that's still nearby.
+  Future<void> _evaluateGeofence(List<VehicleModel> vehicles) async {
     final hasVehicleInside =
         vehicles.any((vehicle) => _geofenceEvaluator.isInsideGamma(vehicle));
 
-    final now = DateTime.now();
-    final last = _lastGeofenceAlertAt;
-    final withinCooldown =
-        last != null && now.difference(last) < const Duration(minutes: 5);
+    final enteredJustNow = hasVehicleInside && !_wasVehicleInsideGeofence;
+    _wasVehicleInsideGeofence = hasVehicleInside;
+    if (!enteredJustNow) return;
 
-    if (hasVehicleInside && !withinCooldown) {
-      const message =
-          'Upcoming collection: our truck is approaching ${GammaGeofenceConfig.name}. '
-          'Please segregate your dry, wet and mixed waste for pickup.';
-      _notificationController.addAlert(
-        CitizenAlert(
-          title: 'Waste collection truck arriving soon',
-          message: message,
-          timestamp: DateTime.now(),
-        ),
-      );
-      _lastGeofenceAlertAt = now;
+    final prefs = await SharedPreferences.getInstance();
+    final lastMillis = prefs.getInt(_geofenceAlertPrefsKey);
+    final last = lastMillis != null
+        ? DateTime.fromMillisecondsSinceEpoch(lastMillis)
+        : null;
+    final now = DateTime.now();
+    if (last != null && now.difference(last) < _geofenceAlertCooldown) {
+      return;
     }
+
+    _notificationController.addAlert(
+      CitizenAlert(
+        title: 'Truck approaching',
+        message:
+            'Your pickup truck is nearby. Please keep waste segregated.',
+        timestamp: now,
+      ),
+    );
+    await prefs.setInt(_geofenceAlertPrefsKey, now.millisecondsSinceEpoch);
   }
 
   void _showComingSoon(BuildContext context, String feature) {

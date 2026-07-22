@@ -10,6 +10,7 @@ import 'package:iwms_citizen_app/core/ui/app_flash.dart';
 import 'package:iwms_citizen_app/data/models/daily_assignment_model.dart';
 import 'package:iwms_citizen_app/data/repositories/assignment_service.dart';
 import 'package:iwms_citizen_app/data/repositories/auth_repository.dart';
+import 'package:iwms_citizen_app/data/repositories/operator_trip_repository.dart';
 import 'package:iwms_citizen_app/logic/auth/auth_bloc.dart';
 import 'package:iwms_citizen_app/logic/auth/auth_state.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/theme/captain_theme.dart';
@@ -23,12 +24,14 @@ class OperatorQRScanner extends StatefulWidget {
     this.expectedCustomerId,
     this.expectedCustomerName,
     this.expectedAssignmentId,
+    this.knownAssignmentStatuses = const {},
     this.returnToAssignments = false,
   });
 
   final String? expectedCustomerId;
   final String? expectedCustomerName;
   final String? expectedAssignmentId;
+  final Map<String, String> knownAssignmentStatuses;
   final bool returnToAssignments;
 
   @override
@@ -121,11 +124,24 @@ class _OperatorQRScannerState extends State<OperatorQRScanner> {
           {uid, canonicalId},
         );
         final status = statuses[canonicalId]?.toLowerCase() ??
-            statuses[uid]?.toLowerCase();
-        if (status == 'collected' || status == 'skipped') {
-          _showMessage('Already completed for this assignment.');
-          _restartScanner();
-          return;
+            statuses[uid]?.toLowerCase() ??
+            widget.knownAssignmentStatuses[canonicalId]?.toLowerCase() ??
+            widget.knownAssignmentStatuses[uid]?.toLowerCase();
+        if (status == 'collected' ||
+            status == 'skipped' ||
+            status == 'not available' ||
+            status == 'missed') {
+          final proceed = await _confirmHandledCustomer(
+            customerId: canonicalId,
+            customerName:
+                apiCustomer['customer_name']?.toString() ?? canonicalId,
+            status: status ?? '',
+          );
+          if (!mounted) return;
+          if (!proceed) {
+            _restartScanner();
+            return;
+          }
         }
       }
     }
@@ -157,7 +173,8 @@ class _OperatorQRScannerState extends State<OperatorQRScanner> {
     }
 
     // Validated customer — use its real details.
-    final customerName = apiCustomer['customer_name']?.toString() ?? canonicalId;
+    final customerName =
+        apiCustomer['customer_name']?.toString() ?? canonicalId;
     final contactNo = apiCustomer['contact_no']?.toString() ?? "";
     final latitude = apiCustomer['latitude']?.toString() ??
         LocationService.latitude.toString();
@@ -298,41 +315,151 @@ class _OperatorQRScannerState extends State<OperatorQRScanner> {
     }
   }
 
+  String _statusLabel(String status) {
+    switch (status.toLowerCase()) {
+      case 'collected':
+        return 'Collected';
+      case 'skipped':
+        return 'Not available';
+      case 'later':
+        return 'Collect later';
+      default:
+        return status;
+    }
+  }
+
+  Future<bool> _confirmHandledCustomer({
+    required String customerId,
+    required String customerName,
+    required String status,
+  }) async {
+    final label = _statusLabel(status);
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: CaptainTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Stop already marked',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: CaptainTheme.strongText,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '$customerName • $customerId',
+                style: TextStyle(
+                  color: CaptainTheme.mutedText,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: CaptainTheme.surfaceMuted,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: CaptainTheme.hairline),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      status == 'collected'
+                          ? Icons.check_circle_rounded
+                          : Icons.info_outline_rounded,
+                      color: status == 'collected'
+                          ? CaptainTheme.success
+                          : CaptainTheme.warning,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'This household is already marked as $label for this assignment.',
+                        style: TextStyle(
+                          color: CaptainTheme.strongText,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Continue only if you want to update this stop again.',
+                style: TextStyle(
+                  color: CaptainTheme.mutedText,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: CaptainTheme.strongText,
+                        side: BorderSide(color: CaptainTheme.hairline),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onPressed: () => Navigator.of(sheetContext).pop(false),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: CaptainTheme.accent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onPressed: () => Navigator.of(sheetContext).pop(true),
+                      child: const Text('Update again'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    await _waitForModalTeardown();
+    return result == true;
+  }
+
   Future<void> _markHouseholdStatus({
     required String customerId,
     required String status,
     required String reason,
+    required String? assignmentId,
   }) async {
-    final headers = {
-      'Content-Type': 'application/json',
-      ...await _authHeaders(),
-    };
-    final response = await http
-        .post(
-          Uri.parse(ApiConfig.householdCollectionMarkStatus),
-          headers: headers,
-          body: jsonEncode({
-            'customer_id': customerId,
-            'status': status,
-            'reason': reason,
-            'latitude': LocationService.latitude.toString(),
-            'longitude': LocationService.longitude.toString(),
-          }),
-        )
-        .timeout(const Duration(seconds: 12));
+    final trimmedAssignmentId = assignmentId?.trim() ?? '';
+    if (trimmedAssignmentId.isEmpty) {
+      throw Exception('No active household assignment found.');
+    }
 
-    if (response.statusCode >= 200 && response.statusCode < 300) return;
-
-    String message = 'Unable to update household collection status.';
-    try {
-      final payload = jsonDecode(response.body);
-      if (payload is Map && payload['detail'] != null) {
-        message = payload['detail'].toString();
-      } else if (payload is Map && payload['message'] != null) {
-        message = payload['message'].toString();
-      }
-    } catch (_) {}
-    throw Exception(message);
+    await getIt<OperatorTripRepository>().markHouseholdStatus(
+      customerId: customerId,
+      status: status,
+      reason: reason,
+      assignmentId: trimmedAssignmentId,
+      latitude: LocationService.latitude.toString(),
+      longitude: LocationService.longitude.toString(),
+    );
   }
 
   Future<DailyAssignmentModel?> _resolveActiveAssignment() async {
@@ -527,7 +654,7 @@ class _OperatorQRScannerState extends State<OperatorQRScanner> {
           customerName: customerName,
           assignmentId: assignmentId,
           localStatus: 'skipped',
-          status: 'Missed',
+          status: 'not_available',
           title: 'Why is this household not available?',
           quickReasons: const [
             'Door locked',
@@ -549,7 +676,7 @@ class _OperatorQRScannerState extends State<OperatorQRScanner> {
           customerName: customerName,
           assignmentId: assignmentId,
           localStatus: 'later',
-          status: 'Skipped',
+          status: 'collect_later',
           title: 'Why collect this household later?',
           quickReasons: const [
             'Asked to return later',
@@ -614,6 +741,7 @@ class _OperatorQRScannerState extends State<OperatorQRScanner> {
                   customerId: customerId,
                   status: status,
                   reason: reason,
+                  assignmentId: assignmentId,
                 );
                 if (!sheetContext.mounted) return;
                 FocusScope.of(sheetContext).unfocus();
@@ -666,6 +794,7 @@ class _OperatorQRScannerState extends State<OperatorQRScanner> {
                         backgroundColor: CaptainTheme.surface,
                         disabledColor: CaptainTheme.surfaceMuted,
                         checkmarkColor: CaptainTheme.accentDeep,
+                        showCheckmark: false,
                         labelStyle: TextStyle(
                           color: selected
                               ? CaptainTheme.accentDeep
@@ -712,6 +841,10 @@ class _OperatorQRScannerState extends State<OperatorQRScanner> {
                       errorText: errorText,
                       filled: true,
                       fillColor: CaptainTheme.surfaceMuted,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide(color: CaptainTheme.hairline),
+                      ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
                         borderSide: BorderSide(color: CaptainTheme.hairline),

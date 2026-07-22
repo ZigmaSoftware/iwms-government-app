@@ -25,6 +25,11 @@ plugins {
 
     // Kotlin is fine
     id("org.jetbrains.kotlin.android") version "2.1.0" apply false
+
+    // Firebase Cloud Messaging (push notifications). Only actually applied in
+    // app/build.gradle.kts when android/app/google-services.json exists, so the
+    // build stays green until Firebase is configured — see that file.
+    id("com.google.gms.google-services") version "4.4.2" apply false
 }
 
 include(":app")

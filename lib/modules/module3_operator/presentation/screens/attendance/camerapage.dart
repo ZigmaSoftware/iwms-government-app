@@ -414,7 +414,7 @@ class _CameraScreenState extends State<CameraScreen>
     try {
       final request = http.MultipartRequest(
         'POST',
-        Uri.parse('${ApiConfig.desktopBase}recognize/'),
+        Uri.parse('${ApiConfig.attendanceBase}recognize/'),
       );
 
       final token = await _getAuthToken();

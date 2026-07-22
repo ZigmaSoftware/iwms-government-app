@@ -2,6 +2,9 @@
 // `/api/v1/user-creations/supervisor-zone-map/me/` and
 // `/api/v1/schedule-masters/daily-trip-assignments/`.
 
+import 'package:iwms_citizen_app/data/models/operator_trip_models.dart'
+    show OperatorTripCrew;
+
 /// The zone scope a supervisor is authorised to operate in.
 class SupervisorZoneScope {
   const SupervisorZoneScope({
@@ -53,6 +56,104 @@ class SupervisorZoneScope {
 }
 
 /// A single daily trip assignment as the supervisor sees it.
+/// A single stop on an assignment's route — a bin collection point or a
+/// household — unified so the detail sheet can render one Amazon-style
+/// timeline regardless of collection type.
+class SupervisorStop {
+  const SupervisorStop({
+    required this.uniqueId,
+    required this.sequence,
+    required this.isHousehold,
+    required this.name,
+    required this.isCollected,
+    required this.status,
+    this.entityId,
+    this.binId,
+    this.qrImageUrl,
+    this.subtitle,
+    this.statusReason,
+    this.collectedAt,
+    this.collectedWeightKg,
+    this.imageUrl,
+  });
+
+  final String uniqueId;
+  final int sequence;
+  final bool isHousehold;
+  final String name; // bin name, or household/customer name
+  final String? entityId;
+  final String? binId;
+  final String? qrImageUrl;
+  final String? subtitle; // household address; null for bins
+  final bool isCollected;
+  final String
+      status; // Pending / Collected / Not Available / Collect Later / Skipped
+  final String? statusReason;
+  final DateTime? collectedAt;
+  final double? collectedWeightKg;
+  // Proof photo captured during collection. Bin collection points never carry
+  // one today (the feature is bin-side planned, not yet implemented); a
+  // household stop carries one only if the driver's weighment attached a
+  // photo. Null in both cases means "no photo", never an error state.
+  final String? imageUrl;
+
+  bool get isSkippedOrDeferred =>
+      !isCollected &&
+      const {'not available', 'collect later', 'skipped'}
+          .contains(status.trim().toLowerCase());
+
+  factory SupervisorStop.fromBinJson(Map<String, dynamic> json) {
+    final bin = (json['bin'] as Map?) ?? const {};
+    return SupervisorStop(
+      uniqueId: json['unique_id']?.toString() ?? '',
+      sequence: _parseInt(json['sequence']) ?? 0,
+      isHousehold: false,
+      name: bin['bin_name']?.toString() ?? 'Collection point',
+      entityId: json['collection_point_id']?.toString(),
+      binId: json['bin_id']?.toString(),
+      qrImageUrl: bin['bin_qr']?.toString(),
+      isCollected: json['is_collected'] == true,
+      status: json['status']?.toString() ?? 'Pending',
+      statusReason: json['status_reason']?.toString(),
+      collectedAt: _parseDate(json['collected_at']),
+      collectedWeightKg: _parseDouble(json['collected_weight_kg']),
+      imageUrl: json['image']?.toString(),
+    );
+  }
+
+  factory SupervisorStop.fromHouseholdJson(Map<String, dynamic> json) {
+    final customer = (json['customer'] as Map?) ?? const {};
+    final addressParts = [customer['building_no'], customer['street']]
+        .whereType<String>()
+        .where((p) => p.trim().isNotEmpty)
+        .join(', ');
+    return SupervisorStop(
+      uniqueId: json['unique_id']?.toString() ?? '',
+      sequence: _parseInt(json['sequence']) ?? 0,
+      isHousehold: true,
+      name: customer['customer_name']?.toString() ?? 'Household',
+      entityId: json['customer_id']?.toString(),
+      qrImageUrl: customer['qr_code']?.toString(),
+      subtitle: addressParts.isNotEmpty ? addressParts : null,
+      isCollected: json['is_collected'] == true,
+      status: json['status']?.toString() ?? 'Pending',
+      statusReason: json['status_reason']?.toString(),
+      collectedAt: _parseDate(json['collected_at']),
+      collectedWeightKg: _parseDouble(json['collected_weight_kg']),
+      imageUrl: json['image']?.toString(),
+    );
+  }
+
+  static int? _parseInt(dynamic value) =>
+      value == null ? null : int.tryParse(value.toString());
+
+  static double? _parseDouble(dynamic value) =>
+      value == null ? null : double.tryParse(value.toString());
+
+  static DateTime? _parseDate(dynamic value) =>
+      value == null ? null : DateTime.tryParse(value.toString());
+}
+
 class SupervisorAssignment {
   const SupervisorAssignment({
     required this.uniqueId,
@@ -70,6 +171,12 @@ class SupervisorAssignment {
     required this.tripDate,
     required this.scheduledTime,
     required this.remarks,
+    this.stops = const [],
+    this.staffTemplateId,
+    this.crew,
+    this.hasBin = false,
+    this.hasHousehold = false,
+    this.hasBulk = false,
   });
 
   final String uniqueId;
@@ -87,6 +194,31 @@ class SupervisorAssignment {
   final DateTime? tripDate;
   final String scheduledTime;
   final String remarks;
+  // Bin + household stops, merged and sorted by route sequence.
+  final List<SupervisorStop> stops;
+  final bool hasBin;
+  final bool hasHousehold;
+  final bool hasBulk;
+
+  /// "Bin Collection", "Household Collection", "Bulk Waste Collection", a
+  /// combination, or "Collection" if none of the flags are set.
+  String get collectionTypeLabel {
+    final parts = <String>[
+      if (hasBin) 'Bin',
+      if (hasHousehold) 'Household',
+      if (hasBulk) 'Bulk Waste',
+    ];
+    if (parts.isEmpty) return 'Collection';
+    return '${parts.join(' + ')} Collection';
+  }
+
+  // The (possibly alternative/substitute) staff template running this trip —
+  // matches `SupervisorTeam.uniqueId`, so the Teams screen can tell whether a
+  // given team is on a trip right now.
+  final String? staffTemplateId;
+  // Driver + operator (+ extras), with photo and today's attendance — reused
+  // from the mobile driver app's crew model so both surfaces stay in sync.
+  final OperatorTripCrew? crew;
 
   bool get isScheduled => status.toUpperCase() == 'SCHEDULED';
   bool get isInProgress => status.toUpperCase() == 'IN_PROGRESS';
@@ -114,18 +246,28 @@ class SupervisorAssignment {
     final wardName = ward['ward_name']?.toString() ??
         panchayat['panchayat_name']?.toString() ??
         '';
-    final zoneName = zone['zone_name']?.toString() ??
-        ward['zone_name']?.toString() ??
-        '';
+    final zoneName =
+        zone['zone_name']?.toString() ?? ward['zone_name']?.toString() ?? '';
+
+    final binStops = ((json['collection_points'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((m) => SupervisorStop.fromBinJson(Map<String, dynamic>.from(m)));
+    final householdStops =
+        ((json['household_collection_points'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((m) =>
+                SupervisorStop.fromHouseholdJson(Map<String, dynamic>.from(m)));
+    final stops = [...binStops, ...householdStops]
+      ..sort((a, b) => a.sequence.compareTo(b.sequence));
+    final collectionTypes = (json['collection_types'] as Map?) ?? const {};
 
     return SupervisorAssignment(
       uniqueId: json['unique_id']?.toString() ?? '',
       areaName: wardName.isNotEmpty
           ? wardName
           : (zoneName.isNotEmpty ? zoneName : 'Unassigned area'),
-      zoneId: zone['unique_id']?.toString() ??
-          ward['zone_id']?.toString() ??
-          '',
+      zoneId:
+          zone['unique_id']?.toString() ?? ward['zone_id']?.toString() ?? '',
       zoneName: zoneName,
       wardName: wardName,
       tripCode: tripPlan['display_code']?.toString() ??
@@ -142,8 +284,18 @@ class SupervisorAssignment {
       status: _normStatus(json['status'], fallback: 'SCHEDULED'),
       approvalStatus: json['approval_status']?.toString() ?? 'PENDING',
       tripDate: _parseDate(json['trip_date']),
+      stops: stops,
       scheduledTime: json['scheduled_time']?.toString() ?? '',
       remarks: json['remarks']?.toString() ?? '',
+      staffTemplateId: staff['unique_id']?.toString(),
+      crew: json['crew'] is Map
+          ? OperatorTripCrew.fromJson(
+              Map<String, dynamic>.from(json['crew'] as Map),
+            )
+          : null,
+      hasBin: collectionTypes['has_bin'] == true,
+      hasHousehold: collectionTypes['has_household'] == true,
+      hasBulk: collectionTypes['has_bulk'] == true,
     );
   }
 
@@ -154,9 +306,8 @@ class SupervisorAssignment {
     final tripAssignment = (json['trip_assignment'] as Map?) ?? const {};
     final zone = (tripAssignment['zone'] as Map?) ?? const {};
     final wards = (json['ward'] as List?) ?? const [];
-    final ward = wards.isNotEmpty && wards.first is Map
-        ? wards.first as Map
-        : const {};
+    final ward =
+        wards.isNotEmpty && wards.first is Map ? wards.first as Map : const {};
     final panchayat = (json['panchayat'] as Map?) ?? const {};
     final wasteType = (json['waste_type'] as Map?) ?? const {};
     final vehicle = (json['vehicle'] as Map?) ?? const {};
@@ -191,8 +342,8 @@ class SupervisorAssignment {
       driverName: driver['employee_name']?.toString() ?? '',
       operatorName: operator['employee_name']?.toString() ?? '',
       status: status,
-      approvalStatus: tripAssignment['approval_status']?.toString() ??
-          'APPROVED',
+      approvalStatus:
+          tripAssignment['approval_status']?.toString() ?? 'APPROVED',
       tripDate: _parseDate(json['trip_date']),
       scheduledTime: tripAssignment['scheduled_time']?.toString() ??
           json['actual_start_time']?.toString() ??
@@ -205,6 +356,75 @@ class SupervisorAssignment {
     if (value == null) return null;
     return DateTime.tryParse(value.toString());
   }
+}
+
+class SupervisorVehicle {
+  const SupervisorVehicle({
+    required this.uniqueId,
+    required this.vehicleNo,
+    required this.vehicleTypeName,
+    required this.fuelTypeName,
+    required this.capacity,
+    required this.isActive,
+    this.stateName,
+    this.districtName,
+    this.corporationName,
+    this.municipalityName,
+    this.townPanchayatName,
+    this.panchayatUnionName,
+    this.panchayatName,
+  });
+
+  final String uniqueId;
+  final String vehicleNo;
+  final String vehicleTypeName;
+  final String fuelTypeName;
+  final double? capacity;
+  final bool isActive;
+  final String? stateName;
+  final String? districtName;
+  final String? corporationName;
+  final String? municipalityName;
+  final String? townPanchayatName;
+  final String? panchayatUnionName;
+  final String? panchayatName;
+
+  String get locationLabel {
+    for (final value in [
+      panchayatName,
+      townPanchayatName,
+      municipalityName,
+      corporationName,
+      panchayatUnionName,
+      districtName,
+      stateName,
+    ]) {
+      final text = value?.trim() ?? '';
+      if (text.isNotEmpty) return text;
+    }
+    return '';
+  }
+
+  factory SupervisorVehicle.fromJson(Map<String, dynamic> json) {
+    return SupervisorVehicle(
+      uniqueId: json['unique_id']?.toString() ?? '',
+      vehicleNo: json['vehicle_no']?.toString() ?? '',
+      vehicleTypeName: json['vehicle_type_name']?.toString() ?? '',
+      fuelTypeName: json['fuel_type_name']?.toString() ?? '',
+      capacity: _parseDouble(json['capacity']),
+      isActive: json['is_active'] == true,
+      stateName: json['state_name']?.toString(),
+      districtName: json['district_name']?.toString(),
+      corporationName: json['corporation_name']?.toString(),
+      municipalityName: json['municipality_name']?.toString(),
+      townPanchayatName: json['town_panchayat_name']?.toString(),
+      panchayatUnionName: json['panchayat_union_name']?.toString(),
+      panchayatName: json['panchayat_name']?.toString(),
+    );
+  }
+
+  static double? _parseDouble(dynamic value) =>
+      value == null ? null : double.tryParse(value.toString());
 }
 
 /// Dashboard KPI rollup derived from the day's assignments.
@@ -350,6 +570,7 @@ class SupervisorStaff {
     required this.department,
     required this.site,
     required this.mobile,
+    this.attendanceStatus = '',
   });
 
   final String uniqueId;
@@ -360,6 +581,7 @@ class SupervisorStaff {
   final String department;
   final String site;
   final String mobile;
+  final String attendanceStatus;
 
   factory SupervisorStaff.fromJson(Map<String, dynamic> j) {
     final name = _str(j['employee_name']).isNotEmpty
@@ -381,8 +603,65 @@ class SupervisorStaff {
       department: _str(j['department_name']),
       site: _str(j['site_name']),
       mobile: _str(j['contact_mobile']),
+      attendanceStatus: _str(j['attendance_status']),
     );
   }
+}
+
+class SupervisorStaffAttendanceSummary {
+  const SupervisorStaffAttendanceSummary({
+    required this.presentCount,
+    required this.absentCount,
+    required this.leaveCount,
+    required this.presentStaff,
+    required this.absentStaff,
+    required this.leaveStaff,
+  });
+
+  final int presentCount;
+  final int absentCount;
+  final int leaveCount;
+  final List<SupervisorStaff> presentStaff;
+  final List<SupervisorStaff> absentStaff;
+  final List<SupervisorStaff> leaveStaff;
+
+  List<SupervisorStaff> listFor(String filter) {
+    switch (filter) {
+      case 'present':
+        return presentStaff;
+      case 'absent':
+        return absentStaff;
+      case 'leave':
+        return leaveStaff;
+      default:
+        return [...presentStaff, ...absentStaff, ...leaveStaff];
+    }
+  }
+
+  factory SupervisorStaffAttendanceSummary.fromJson(Map<String, dynamic> json) {
+    List<SupervisorStaff> parseList(dynamic raw) => (raw as List? ?? const [])
+        .whereType<Map>()
+        .map((e) => SupervisorStaff.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+
+    return SupervisorStaffAttendanceSummary(
+      presentCount: int.tryParse(json['present_count']?.toString() ?? '') ?? 0,
+      absentCount: int.tryParse(json['absent_count']?.toString() ?? '') ?? 0,
+      leaveCount: int.tryParse(json['leave_count']?.toString() ?? '') ?? 0,
+      presentStaff: parseList(json['present_staff']),
+      absentStaff: parseList(json['absent_staff']),
+      leaveStaff: parseList(json['leave_staff']),
+    );
+  }
+
+  static const empty = SupervisorStaffAttendanceSummary(
+    presentCount: 0,
+    absentCount: 0,
+    leaveCount: 0,
+    presentStaff: [],
+    absentStaff: [],
+    leaveStaff: [],
+  );
 }
 
 /// A staff template (from `schedule-masters/staff-templates/`) — the "Teams"
@@ -413,6 +692,123 @@ class SupervisorTeam {
       extraCount: extra is List ? extra.length : 0,
       status: _str(j['status']),
       approvalStatus: _str(j['approval_status']),
+    );
+  }
+}
+
+class SupervisorCollectionPoint {
+  const SupervisorCollectionPoint({
+    required this.uniqueId,
+    required this.name,
+    required this.collectionType,
+    required this.panchayatName,
+    required this.municipalityName,
+    required this.areaTypeName,
+    required this.latitude,
+    required this.longitude,
+    required this.binCount,
+    required this.binQrUrl,
+    required this.isActive,
+  });
+
+  final String uniqueId;
+  final String name;
+  final String collectionType;
+  final String panchayatName;
+  final String municipalityName;
+  final String areaTypeName;
+  final String latitude;
+  final String longitude;
+  final int binCount;
+  final String binQrUrl;
+  final bool isActive;
+
+  String get scopeLabel {
+    for (final value in [panchayatName, municipalityName, areaTypeName]) {
+      if (value.trim().isNotEmpty) return value;
+    }
+    return 'Unassigned area';
+  }
+
+  factory SupervisorCollectionPoint.fromJson(Map<String, dynamic> j) {
+    final bins = j['bins_detail'];
+    final firstBin = bins is List && bins.isNotEmpty && bins.first is Map
+        ? Map<String, dynamic>.from(bins.first as Map)
+        : const <String, dynamic>{};
+    return SupervisorCollectionPoint(
+      uniqueId: _str(j['unique_id']),
+      name: _str(j['cp_name']).isNotEmpty
+          ? _str(j['cp_name'])
+          : 'Collection point',
+      collectionType: _str(j['collection_type']),
+      panchayatName: _str(j['panchayat_name']),
+      municipalityName: _str(j['municipality_name']),
+      areaTypeName: _str(j['area_type_name']),
+      latitude: _str(j['latitude']),
+      longitude: _str(j['longitude']),
+      binCount: bins is List ? bins.length : 0,
+      binQrUrl: _str(firstBin['bin_qr']),
+      isActive: j['is_active'] == true,
+    );
+  }
+}
+
+class SupervisorHousehold {
+  const SupervisorHousehold({
+    required this.uniqueId,
+    required this.name,
+    required this.contactNo,
+    required this.buildingNo,
+    required this.street,
+    required this.area,
+    required this.panchayatName,
+    required this.municipalityName,
+    required this.areaTypeName,
+    required this.qrCodeUrl,
+    required this.isActive,
+  });
+
+  final String uniqueId;
+  final String name;
+  final String contactNo;
+  final String buildingNo;
+  final String street;
+  final String area;
+  final String panchayatName;
+  final String municipalityName;
+  final String areaTypeName;
+  final String qrCodeUrl;
+  final bool isActive;
+
+  String get address {
+    final parts = [buildingNo, street, area]
+        .where((part) => part.trim().isNotEmpty)
+        .toList();
+    return parts.isEmpty ? 'Address not available' : parts.join(', ');
+  }
+
+  String get scopeLabel {
+    for (final value in [panchayatName, municipalityName, areaTypeName]) {
+      if (value.trim().isNotEmpty) return value;
+    }
+    return 'Unassigned area';
+  }
+
+  factory SupervisorHousehold.fromJson(Map<String, dynamic> j) {
+    return SupervisorHousehold(
+      uniqueId: _str(j['unique_id']),
+      name: _str(j['customer_name']).isNotEmpty
+          ? _str(j['customer_name'])
+          : 'Household',
+      contactNo: _str(j['contact_no']),
+      buildingNo: _str(j['building_no']),
+      street: _str(j['street']),
+      area: _str(j['area']),
+      panchayatName: _str(j['panchayat_name']),
+      municipalityName: _str(j['municipality_name']),
+      areaTypeName: _str(j['area_type_name']),
+      qrCodeUrl: _str(j['qr_code']),
+      isActive: j['is_active'] == true,
     );
   }
 }

@@ -30,6 +30,11 @@ class SupervisorRepository {
       '${ApiConfig.desktopBase}schedule-masters/staff-templates/';
   static const String _tripLogs =
       '${ApiConfig.desktopBase}schedule-masters/daily-trip-logs/';
+  static const String _attendanceRecords =
+      '${ApiConfig.attendanceBase}records/';
+  static const String _collectionPoints =
+      '${ApiConfig.desktopBase}schedule-masters/collection-points/';
+  static const String _households = ApiConfig.customerList;
 
   /// Fetch the requesting supervisor's authorised zone scope.
   Future<SupervisorZoneScope> fetchMyZoneScope() async {
@@ -169,13 +174,81 @@ class SupervisorRepository {
     }
   }
 
+  Future<SupervisorStaffAttendanceSummary> fetchStaffAttendanceSummary({
+    DateTime? date,
+  }) async {
+    try {
+      final dio = await authorizedDio();
+      final target = date ?? DateTime.now();
+      final dateStr = _formatDate(target);
+      final res = await dio.get(
+        _attendanceRecords,
+        queryParameters: {
+          'from_date': dateStr,
+          'to_date': dateStr,
+        },
+      );
+      final data = res.data;
+      if (data is Map<String, dynamic> && data['staff_summary'] is Map) {
+        return SupervisorStaffAttendanceSummary.fromJson(
+          Map<String, dynamic>.from(data['staff_summary'] as Map),
+        );
+      }
+      return SupervisorStaffAttendanceSummary.empty;
+    } on DioException catch (e) {
+      throw SupervisorException(_message(e));
+    } catch (e) {
+      throw SupervisorException(e.toString());
+    }
+  }
+
   /// Staff templates (the "Teams" list).
   Future<List<SupervisorTeam>> fetchTeams() async {
     try {
       final dio = await authorizedDio();
       final res = await dio.get(_staffTemplates);
+      return _rawList(res.data).map((e) => SupervisorTeam.fromJson(e)).toList();
+    } on DioException catch (e) {
+      throw SupervisorException(_message(e));
+    } catch (e) {
+      throw SupervisorException(e.toString());
+    }
+  }
+
+  Future<List<SupervisorVehicle>> fetchVehicles() async {
+    try {
+      final dio = await authorizedDio();
+      final res = await dio.get(ApiConfig.vehicles);
       return _rawList(res.data)
-          .map((e) => SupervisorTeam.fromJson(e))
+          .map((e) => SupervisorVehicle.fromJson(e))
+          .toList();
+    } on DioException catch (e) {
+      throw SupervisorException(_message(e));
+    } catch (e) {
+      throw SupervisorException(e.toString());
+    }
+  }
+
+  Future<List<SupervisorCollectionPoint>> fetchCollectionPoints() async {
+    try {
+      final dio = await authorizedDio();
+      final res = await dio.get(_collectionPoints);
+      return _rawList(res.data)
+          .map((e) => SupervisorCollectionPoint.fromJson(e))
+          .toList();
+    } on DioException catch (e) {
+      throw SupervisorException(_message(e));
+    } catch (e) {
+      throw SupervisorException(e.toString());
+    }
+  }
+
+  Future<List<SupervisorHousehold>> fetchHouseholds() async {
+    try {
+      final dio = await authorizedDio();
+      final res = await dio.get(_households);
+      return _rawList(res.data)
+          .map((e) => SupervisorHousehold.fromJson(e))
           .toList();
     } on DioException catch (e) {
       throw SupervisorException(_message(e));
@@ -214,13 +287,11 @@ class SupervisorRepository {
     }
     return raw
         .whereType<Map>()
-        .map((e) => SupervisorAssignment.fromJson(
-            Map<String, dynamic>.from(e)))
+        .map((e) => SupervisorAssignment.fromJson(Map<String, dynamic>.from(e)))
         .toList();
   }
 
-  String _formatDate(DateTime d) =>
-      '${d.year.toString().padLeft(4, '0')}-'
+  String _formatDate(DateTime d) => '${d.year.toString().padLeft(4, '0')}-'
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 

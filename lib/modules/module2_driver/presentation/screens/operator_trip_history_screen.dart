@@ -24,9 +24,12 @@ class OperatorTripHistoryScreen extends StatefulWidget {
 
 enum _HistoryFilter { all, inProgress, completed }
 
+enum _CollectionTypeFilter { all, bin, household }
+
 class _OperatorTripHistoryScreenState extends State<OperatorTripHistoryScreen> {
   late Future<List<OperatorTripHistorySummary>> _future;
   _HistoryFilter _filter = _HistoryFilter.all;
+  _CollectionTypeFilter _collectionFilter = _CollectionTypeFilter.all;
 
   OperatorTripRepository get _repo => GetIt.instance<OperatorTripRepository>();
 
@@ -46,13 +49,24 @@ class _OperatorTripHistoryScreenState extends State<OperatorTripHistoryScreen> {
   List<OperatorTripHistorySummary> _applyFilter(
     List<OperatorTripHistorySummary> trips,
   ) {
-    switch (_filter) {
-      case _HistoryFilter.inProgress:
-        return trips.where((t) => t.isInProgress || t.isScheduled).toList();
-      case _HistoryFilter.completed:
-        return trips.where((t) => t.isCompleted).toList();
-      case _HistoryFilter.all:
-        return trips;
+    final statusFiltered = switch (_filter) {
+      _HistoryFilter.inProgress =>
+        trips.where((t) => t.isInProgress || t.isScheduled).toList(),
+      _HistoryFilter.completed => trips.where((t) => t.isCompleted).toList(),
+      _HistoryFilter.all => trips,
+    };
+
+    return statusFiltered.where(_matchesCollectionType).toList();
+  }
+
+  bool _matchesCollectionType(OperatorTripHistorySummary trip) {
+    switch (_collectionFilter) {
+      case _CollectionTypeFilter.bin:
+        return trip.isBinCollection;
+      case _CollectionTypeFilter.household:
+        return trip.isHouseholdCollection;
+      case _CollectionTypeFilter.all:
+        return true;
     }
   }
 
@@ -69,6 +83,21 @@ class _OperatorTripHistoryScreenState extends State<OperatorTripHistoryScreen> {
       }
     }
     return (total: trips.length, active: active, done: done);
+  }
+
+  ({int total, int bin, int household}) _typeCounts(
+    List<OperatorTripHistorySummary> trips,
+  ) {
+    var bin = 0;
+    var household = 0;
+    for (final trip in trips) {
+      if (trip.isHouseholdCollection) {
+        household += 1;
+      } else if (trip.isBinCollection) {
+        bin += 1;
+      }
+    }
+    return (total: trips.length, bin: bin, household: household);
   }
 
   @override
@@ -99,6 +128,7 @@ class _OperatorTripHistoryScreenState extends State<OperatorTripHistoryScreen> {
             final allTrips =
                 snapshot.data ?? const <OperatorTripHistorySummary>[];
             final counts = _counts(allTrips);
+            final typeCounts = _typeCounts(allTrips);
             final trips = _applyFilter(allTrips);
 
             return ListView(
@@ -109,7 +139,11 @@ class _OperatorTripHistoryScreenState extends State<OperatorTripHistoryScreen> {
                 _FilterChips(
                   selected: _filter,
                   onSelected: (f) => setState(() => _filter = f),
+                  selectedCollection: _collectionFilter,
+                  onSelectedCollection: (f) =>
+                      setState(() => _collectionFilter = f),
                   counts: counts,
+                  typeCounts: typeCounts,
                 ),
                 const SizedBox(height: 14),
                 if (trips.isEmpty) ...[
@@ -168,11 +202,9 @@ class _HistoryStats extends StatelessWidget {
       child: Row(
         children: [
           _stat(counts.total, 'TOTAL', Colors.white),
-          Container(
-              width: 1, height: 36, color: Colors.white24),
+          Container(width: 1, height: 36, color: Colors.white24),
           _stat(counts.active, 'IN PROGRESS', const Color(0xFF38BDF8)),
-          Container(
-              width: 1, height: 36, color: Colors.white24),
+          Container(width: 1, height: 36, color: Colors.white24),
           _stat(counts.done, 'COMPLETED', const Color(0xFF34D399)),
         ],
       ),
@@ -210,37 +242,92 @@ class _HistoryStats extends StatelessWidget {
 class _FilterChips extends StatelessWidget {
   final _HistoryFilter selected;
   final ValueChanged<_HistoryFilter> onSelected;
+  final _CollectionTypeFilter selectedCollection;
+  final ValueChanged<_CollectionTypeFilter> onSelectedCollection;
   final ({int total, int active, int done}) counts;
+  final ({int total, int bin, int household}) typeCounts;
 
   const _FilterChips({
     required this.selected,
     required this.onSelected,
+    required this.selectedCollection,
+    required this.onSelectedCollection,
     required this.counts,
+    required this.typeCounts,
   });
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          _chip('All (${counts.total})', _HistoryFilter.all,
-              CaptainTheme.primary),
-          const SizedBox(width: 8),
-          _chip('In Progress (${counts.active})', _HistoryFilter.inProgress,
-              const Color(0xFF0EA5E9)),
-          const SizedBox(width: 8),
-          _chip('Completed (${counts.done})', _HistoryFilter.completed,
-              CaptainTheme.success),
-        ],
-      ),
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _statusChip(
+          'All (${counts.total})',
+          _HistoryFilter.all,
+          CaptainTheme.primary,
+        ),
+        _statusChip(
+          'In Progress (${counts.active})',
+          _HistoryFilter.inProgress,
+          const Color(0xFF0EA5E9),
+        ),
+        _statusChip(
+          'Completed (${counts.done})',
+          _HistoryFilter.completed,
+          CaptainTheme.success,
+        ),
+        _typeChip(
+          'All Types (${typeCounts.total})',
+          _CollectionTypeFilter.all,
+          CaptainTheme.strongText,
+        ),
+        _typeChip(
+          'Bin (${typeCounts.bin})',
+          _CollectionTypeFilter.bin,
+          CaptainTheme.primary,
+        ),
+        _typeChip(
+          'Household (${typeCounts.household})',
+          _CollectionTypeFilter.household,
+          CaptainTheme.success,
+        ),
+      ],
     );
   }
 
-  Widget _chip(String label, _HistoryFilter value, Color color) {
+  Widget _statusChip(String label, _HistoryFilter value, Color color) {
     final isSelected = selected == value;
-    return GestureDetector(
+    return _chip(
+      label: label,
+      isSelected: isSelected,
       onTap: () => onSelected(value),
+      color: color,
+    );
+  }
+
+  Widget _typeChip(
+    String label,
+    _CollectionTypeFilter value,
+    Color color,
+  ) {
+    final isSelected = selectedCollection == value;
+    return _chip(
+      label: label,
+      isSelected: isSelected,
+      onTap: () => onSelectedCollection(value),
+      color: color,
+    );
+  }
+
+  Widget _chip({
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+    required Color color,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
@@ -356,9 +443,7 @@ class _OperatorTripHistoryDetailScreenState
                   badge: '${detail.collectionPoints.length}',
                 ),
                 const SizedBox(height: 10),
-                ...detail.collectionPoints
-                    .map((cp) => _CpDetailTile(cp: cp))
-                    ,
+                ...detail.collectionPoints.map((cp) => _CpDetailTile(cp: cp)),
                 if (detail.events.isNotEmpty) ...[
                   const SizedBox(height: 18),
                   _SectionHeader(
@@ -389,6 +474,7 @@ class _DetailHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = _StatusPalette.of(summary.status);
+    final assignmentTypeLabel = summary.assignmentTypeLabel;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -414,14 +500,23 @@ class _DetailHeader extends StatelessWidget {
                   ),
                 ),
               ),
-              _statusPill(s),
+              if (s.label.isNotEmpty) _statusPill(s),
             ],
           ),
           const SizedBox(height: 6),
           Row(
             children: [
-              _wasteChip(summary.wasteType),
-              const SizedBox(width: 8),
+              if (assignmentTypeLabel.isNotEmpty) ...[
+                _typeChip(
+                  assignmentTypeLabel,
+                  _assignmentTypeColor(summary.collectionType),
+                ),
+                const SizedBox(width: 8),
+              ],
+              if (summary.wasteType.name.trim().isNotEmpty) ...[
+                _wasteChip(summary.wasteType),
+                const SizedBox(width: 8),
+              ],
               Expanded(
                 child: Text(
                   summary.assignmentUniqueId,
@@ -468,6 +563,26 @@ class _DetailHeader extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _typeChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.22),
+        borderRadius: CaptainTheme.chipRadius,
+        border: Border.all(color: color.withValues(alpha: 0.6)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w800,
+          fontSize: 11,
+          letterSpacing: 0.4,
+        ),
       ),
     );
   }
@@ -582,7 +697,8 @@ class _ProgressStrip extends StatelessWidget {
                     : 'Trip scheduled — not started yet.',
             style: TextStyle(
               fontSize: 12.5,
-              color: p.completed ? CaptainTheme.success : CaptainTheme.mutedText,
+              color:
+                  p.completed ? CaptainTheme.success : CaptainTheme.mutedText,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -693,8 +809,8 @@ class _StaffSection extends StatelessWidget {
             title: 'Crew',
             trailing: staff.isAltActive
                 ? Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFBBF24).withValues(alpha: 0.16),
                       borderRadius: CaptainTheme.chipRadius,
@@ -827,8 +943,7 @@ class _TimingSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _CardTitle(
-              icon: Icons.schedule_rounded, title: 'Timing'),
+          const _CardTitle(icon: Icons.schedule_rounded, title: 'Timing'),
           const SizedBox(height: 10),
           _row('Scheduled', _formatTime(summary.scheduledTime),
               Icons.event_available_outlined),
@@ -837,19 +952,18 @@ class _TimingSection extends StatelessWidget {
               Icons.play_arrow_rounded,
               activeColor: const Color(0xFF0EA5E9)),
           const SizedBox(height: 8),
-          _row('Ended', _formatTime(summary.actualEndTime),
-              Icons.flag_rounded,
+          _row('Ended', _formatTime(summary.actualEndTime), Icons.flag_rounded,
               activeColor: CaptainTheme.success),
         ],
       ),
     );
   }
 
-  Widget _row(String label, String value, IconData icon,
-      {Color? activeColor}) {
+  Widget _row(String label, String value, IconData icon, {Color? activeColor}) {
     final isSet = value != '—';
-    final color =
-        isSet ? (activeColor ?? CaptainTheme.strongText) : CaptainTheme.mutedText;
+    final color = isSet
+        ? (activeColor ?? CaptainTheme.strongText)
+        : CaptainTheme.mutedText;
     return Row(
       children: [
         Icon(icon, size: 16, color: color),
@@ -932,8 +1046,8 @@ class _VehicleSection extends StatelessWidget {
               ),
               if (tripPlan != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 5),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
                     color: CaptainTheme.surfaceMuted,
                     borderRadius: CaptainTheme.chipRadius,
@@ -1179,9 +1293,8 @@ class _EventTimelineTile extends StatelessWidget {
                 Container(
                     width: 2,
                     height: 6,
-                    color: isFirst
-                        ? Colors.transparent
-                        : CaptainTheme.hairline),
+                    color:
+                        isFirst ? Colors.transparent : CaptainTheme.hairline),
                 Container(
                   width: 14,
                   height: 14,
@@ -1200,8 +1313,7 @@ class _EventTimelineTile extends StatelessWidget {
                 Expanded(
                   child: Container(
                     width: 2,
-                    color:
-                        isLast ? Colors.transparent : CaptainTheme.hairline,
+                    color: isLast ? Colors.transparent : CaptainTheme.hairline,
                   ),
                 ),
               ],
@@ -1276,7 +1388,8 @@ class _EventTimelineTile extends StatelessWidget {
                         ),
                     ],
                   ),
-                  if (event.notes != null && event.notes!.trim().isNotEmpty) ...[
+                  if (event.notes != null &&
+                      event.notes!.trim().isNotEmpty) ...[
                     const SizedBox(height: 8),
                     Container(
                       padding: const EdgeInsets.all(8),
@@ -1385,8 +1498,7 @@ class _SectionHeader extends StatelessWidget {
   final IconData icon;
   final String title;
   final String? badge;
-  const _SectionHeader(
-      {required this.icon, required this.title, this.badge});
+  const _SectionHeader({required this.icon, required this.title, this.badge});
 
   @override
   Widget build(BuildContext context) {
@@ -1478,7 +1590,8 @@ class _StatusPalette {
   });
 
   static _StatusPalette of(String status) {
-    switch (status.toLowerCase()) {
+    final raw = status.trim();
+    switch (raw.toLowerCase()) {
       case 'completed':
         return _StatusPalette(
           label: 'Completed',
@@ -1499,18 +1612,42 @@ class _StatusPalette {
         );
       default:
         return _StatusPalette(
-          label: 'Scheduled',
-          color: CaptainTheme.warning,
-          icon: Icons.schedule_rounded,
+          label: raw,
+          color: raw.isEmpty ? CaptainTheme.mutedText : CaptainTheme.info,
+          icon: raw.isEmpty
+              ? Icons.help_outline_rounded
+              : Icons.info_outline_rounded,
         );
     }
   }
 }
 
+Color _assignmentTypeColor(String? type) {
+  switch (type) {
+    case 'household_collection':
+      return const Color(0xFF34D399);
+    case 'bulk_waste_collection':
+      return const Color(0xFFFBBF24);
+    case 'bin_collection':
+    default:
+      return const Color(0xFF60A5FA);
+  }
+}
+
 String _dateLabel(DateTime d) {
   const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   return '${d.day.toString().padLeft(2, '0')} ${months[d.month - 1]} ${d.year}';
 }

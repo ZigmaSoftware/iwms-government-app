@@ -41,6 +41,56 @@ class OperatorTripRepository {
     }
   }
 
+  /// All of the operator's trips today (bin + household + bulk). Returns an
+  /// empty list when there is no trip. Used by the header carousel.
+  Future<List<OperatorTripToday>> fetchMyTripsToday() async {
+    final dio = await authorizedDio();
+    try {
+      final resp = await dio.get(ApiConfig.operatorMyTripsToday);
+      final data = resp.data;
+      final results = data is Map && data['results'] is List
+          ? data['results'] as List
+          : const <dynamic>[];
+      return results
+          .map((e) => OperatorTripToday.fromJson(
+                Map<String, dynamic>.from(e as Map),
+              ))
+          .toList();
+    } on DioException catch (e) {
+      _throwDio(e);
+    }
+  }
+
+  /// Mark a household stop "collect later" (skipped) or "not available"
+  /// (missed) for a specific trip assignment. Scoped to [assignmentId] so the
+  /// status lands on the correct household trip (a driver may hold a bin trip
+  /// AND a household trip today).
+  Future<void> markHouseholdStatus({
+    required String customerId,
+    required String status, // 'collect_later' | 'not_available'
+    required String reason,
+    required String assignmentId,
+    String? latitude,
+    String? longitude,
+  }) async {
+    final dio = await authorizedDio();
+    try {
+      await dio.post(
+        ApiConfig.householdCollectionMarkStatus,
+        data: {
+          'customer_id': customerId,
+          'status': status,
+          'reason': reason,
+          'assignment_id': assignmentId,
+          if (latitude != null && latitude.isNotEmpty) 'latitude': latitude,
+          if (longitude != null && longitude.isNotEmpty) 'longitude': longitude,
+        },
+      );
+    } on DioException catch (e) {
+      _throwDio(e);
+    }
+  }
+
   Future<BinScanValidateResult> validateBinQr(String binQr) async {
     final dio = await authorizedDio();
     try {

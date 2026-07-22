@@ -52,7 +52,7 @@ class _SupervisorGrievanceScreenState extends State<SupervisorGrievanceScreen> {
   List<GrievanceTicket> _tickets = [];
   bool _loading = true;
   bool _busy = false;
-  String _filter = 'all'; // all | pending | started | escalated | resolved
+  String _filter = 'all'; // all | raised | pending | escalated | resolved
   Timer? _poll;
   Set<String> _knownIds = {};
 
@@ -109,8 +109,10 @@ class _SupervisorGrievanceScreenState extends State<SupervisorGrievanceScreen> {
   List<GrievanceTicket> get _filtered {
     return _tickets.where((t) {
       final c = t.statusCode;
-      if (_filter == 'pending') return c == 'SUBMITTED' || c == 'ASSIGNED';
-      if (_filter == 'started') return c == 'IN_PROGRESS';
+      if (_filter == 'raised') return c == 'SUBMITTED' || c == 'DRAFT';
+      if (_filter == 'pending') {
+        return c == 'ASSIGNED' || c == 'IN_PROGRESS';
+      }
       if (_filter == 'escalated') return c == 'ESCALATED';
       if (_filter == 'resolved') return _finalCodes.contains(c);
       return true;
@@ -138,30 +140,95 @@ class _SupervisorGrievanceScreenState extends State<SupervisorGrievanceScreen> {
     final ctrl = TextEditingController();
     return showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: TextField(
-          controller: ctrl,
-          maxLines: 3,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Add a note…'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+      builder: (ctx) {
+        final fieldBorder = OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(
+            color: SupervisorTheme.hairline.withValues(alpha: 0.75),
           ),
-          FilledButton(
-            style:
-                FilledButton.styleFrom(backgroundColor: SupervisorTheme.accent),
-            onPressed: () {
-              if (required && ctrl.text.trim().isEmpty) return;
-              Navigator.pop(ctx, ctrl.text.trim());
-            },
-            child: const Text('Confirm'),
+        );
+        return AlertDialog(
+          backgroundColor: SupervisorTheme.surface,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(28),
           ),
-        ],
-      ),
+          titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+          contentPadding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+          actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          title: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: SupervisorTheme.strongText,
+            ),
+          ),
+          content: TextField(
+            controller: ctrl,
+            maxLines: 4,
+            minLines: 4,
+            autofocus: true,
+            cursorColor: SupervisorTheme.accent,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: SupervisorTheme.strongText,
+            ),
+            decoration: InputDecoration(
+              hintText: 'Add a note…',
+              hintStyle: const TextStyle(
+                color: SupervisorTheme.mutedText,
+                fontWeight: FontWeight.w500,
+              ),
+              filled: true,
+              fillColor: SupervisorTheme.surfaceMuted.withValues(alpha: 0.8),
+              contentPadding: const EdgeInsets.all(16),
+              border: fieldBorder,
+              enabledBorder: fieldBorder,
+              focusedBorder: fieldBorder.copyWith(
+                borderSide: const BorderSide(
+                  color: SupervisorTheme.accent,
+                  width: 1.5,
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: SupervisorTheme.mutedText,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              ),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: SupervisorTheme.accent,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              onPressed: () {
+                if (required && ctrl.text.trim().isEmpty) return;
+                Navigator.pop(ctx, ctrl.text.trim());
+              },
+              child: const Text(
+                'Confirm',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -208,7 +275,7 @@ class _SupervisorGrievanceScreenState extends State<SupervisorGrievanceScreen> {
       ),
       body: Column(
         children: [
-          _filterBar(),
+          _summaryHeader(),
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
@@ -243,43 +310,165 @@ class _SupervisorGrievanceScreenState extends State<SupervisorGrievanceScreen> {
     );
   }
 
-  Widget _filterBar() {
-    final tabs = [
-      ('all', 'All', _tickets.length),
-      (
-        'pending',
-        'Pending',
-        _count((t) => t.statusCode == 'SUBMITTED' || t.statusCode == 'ASSIGNED'),
+  Widget _summaryHeader() {
+    final cards = [
+      _GrievanceSummaryCardData(
+        key: 'raised',
+        label: 'Raised',
+        count: _count(
+            (t) => t.statusCode == 'SUBMITTED' || t.statusCode == 'DRAFT'),
+        icon: Icons.notifications_active_outlined,
+        color: const Color(0xFF2563EB),
       ),
-      ('started', 'Started', _count((t) => t.statusCode == 'IN_PROGRESS')),
-      ('escalated', 'Escalated', _count((t) => t.statusCode == 'ESCALATED')),
-      ('resolved', 'Resolved', _count((t) => _finalCodes.contains(t.statusCode))),
+      _GrievanceSummaryCardData(
+        key: 'pending',
+        label: 'Pending',
+        count: _count(
+          (t) => t.statusCode == 'ASSIGNED' || t.statusCode == 'IN_PROGRESS',
+        ),
+        icon: Icons.timelapse_rounded,
+        color: SupervisorTheme.warning,
+      ),
+      _GrievanceSummaryCardData(
+        key: 'resolved',
+        label: 'Resolved',
+        count: _count((t) => _finalCodes.contains(t.statusCode)),
+        icon: Icons.check_circle_outline_rounded,
+        color: SupervisorTheme.success,
+      ),
+      _GrievanceSummaryCardData(
+        key: 'escalated',
+        label: 'Escalated',
+        count: _count((t) => t.statusCode == 'ESCALATED'),
+        icon: Icons.trending_up_rounded,
+        color: SupervisorTheme.danger,
+      ),
     ];
+
     return Container(
       color: SupervisorTheme.surface,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            for (final (key, label, n) in tabs)
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  label: Text('$label ($n)'),
-                  selected: _filter == key,
-                  onSelected: (_) => setState(() => _filter = key),
-                  selectedColor: SupervisorTheme.primary,
-                  labelStyle: TextStyle(
-                    color: _filter == key
-                        ? Colors.white
-                        : SupervisorTheme.strongText,
-                    fontWeight: FontWeight.w600,
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: cards.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              childAspectRatio: 1.9,
+            ),
+            itemBuilder: (_, i) => _summaryCard(cards[i]),
+          ),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(999),
+              onTap: () => setState(() => _filter = 'all'),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: _filter == 'all'
+                      ? SupervisorTheme.accent.withValues(alpha: 0.10)
+                      : SupervisorTheme.surfaceMuted,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: _filter == 'all'
+                        ? SupervisorTheme.accent.withValues(alpha: 0.28)
+                        : SupervisorTheme.hairline.withValues(alpha: 0.32),
                   ),
-                  backgroundColor: SupervisorTheme.surfaceMuted,
+                ),
+                child: Text(
+                  'View all (${_tickets.length})',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: _filter == 'all'
+                        ? SupervisorTheme.accent
+                        : SupervisorTheme.strongText,
+                  ),
                 ),
               ),
-          ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryCard(_GrievanceSummaryCardData card) {
+    final selected = _filter == card.key;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => setState(() => _filter = card.key),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected
+                ? card.color.withValues(alpha: 0.12)
+                : SupervisorTheme.background,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: selected
+                  ? card.color.withValues(alpha: 0.34)
+                  : SupervisorTheme.hairline.withValues(alpha: 0.30),
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: card.color.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(card.icon, size: 16, color: card.color),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      card.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color:
+                            selected ? card.color : SupervisorTheme.mutedText,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Text(
+                  '${card.count}',
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    color: SupervisorTheme.strongText,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -492,6 +681,22 @@ class _SupervisorGrievanceScreenState extends State<SupervisorGrievanceScreen> {
           ],
         ),
       );
+}
+
+class _GrievanceSummaryCardData {
+  const _GrievanceSummaryCardData({
+    required this.key,
+    required this.label,
+    required this.count,
+    required this.icon,
+    required this.color,
+  });
+
+  final String key;
+  final String label;
+  final int count;
+  final IconData icon;
+  final Color color;
 }
 
 class _SupervisorDetailSheet extends StatelessWidget {

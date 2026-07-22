@@ -1,1012 +1,740 @@
-flutter:           <td class="code"><pre>&#x27;default&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>CACHE_MIDDLEWARE_KEY_PREFIX</td>
-flutter:           <td class="code"><pre>&#x27;********************&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>CACHE_MIDDLEWARE_SECONDS</td>
-flutter:           <td class="code"><pre>600</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>CORS_ALLOWED_ORIGIN_REGEXES</td>
-flutter:           <td class="code"><pre>[&#x27;^http://10\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://192\\.168\\.4\\.\\d{1,3}(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://192\\.168\\.5\\.\\d{1,3}(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://192\\.168\\.3\\.\\d{1,3}(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://192\\.168\\.1\\.\\d{1,3}(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://127\\.0\\.0\\.1(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://125\\.17\\.238\\.158(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://localhost(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://192\\.168\\.4\\.58(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://192\\.168\\.5\\.92(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://115\\.245\\.93\\.26(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://10\\.64\\.151\\.226(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://10\\.205\\.101\\.232(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://10\\.244\\.208\\.158(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://10\\.183\\.250\\.158(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://192\\.168\\.7\\.176(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://192\\.168\\.5\\.77(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://192\\.168\\.5\\.20(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://192\\.168\\.6\\.198(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://192\\.168\\.1\\.156(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://192\\.168\\.3\\.120(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://10\\.152\\.141\\.197(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://192\\.168\\.3\\.112(:\\d+)?$&#x27;,
-flutter:  &#x27;^http://10\\.43\\.152\\.197(:\\d+)?$&#x27;,
-flutter:  &#x27;https://aura-haustorial-elayne.ngrok-free.dev&#x27;]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>CORS_ALLOW_CREDENTIALS</td>
-flutter:           <td class="code"><pre>True</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>CSRF_COOKIE_AGE</td>
-flutter:           <td class="code"><pre>31449600</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>CSRF_COOKIE_DOMAIN</td>
-flutter:           <td class="code"><pre>None</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>CSRF_COOKIE_HTTPONLY</td>
-flutter:           <td class="code"><pre>False</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>CSRF_COOKIE_NAME</td>
-flutter:           <td class="code"><pre>&#x27;csrftoken&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>CSRF_COOKIE_PATH</td>
-flutter:           <td class="code"><pre>&#x27;/&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>CSRF_COOKIE_SAMESITE</td>
-flutter:           <td class="code"><pre>&#x27;Lax&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>CSRF_COOKIE_SECURE</td>
-flutter:           <td class="code"><pre>False</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>CSRF_FAILURE_VIEW</td>
-flutter:           <td class="code"><pre>&#x27;django.views.csrf.csrf_failure&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>CSRF_HEADER_NAME</td>
-flutter:           <td class="code"><pre>&#x27;HTTP_X_CSRFTOKEN&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>CSRF_TRUSTED_ORIGINS</td>
-flutter:           <td class="code"><pre>[]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>CSRF_USE_SESSIONS</td>
-flutter:           <td class="code"><pre>False</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>DATABASES</td>
-flutter:           <td class="code"><pre>{&#x27;default&#x27;: {&#x27;ATOMIC_REQUESTS&#x27;: False,
-flutter:              &#x27;AUTOCOMMIT&#x27;: True,
-flutter:              &#x27;CONN_HEALTH_CHECKS&#x27;: False,
-flutter:              &#x27;CONN_MAX_AGE&#x27;: 0,
-flutter:              &#x27;ENGINE&#x27;: &#x27;django.db.backends.mysql&#x27;,
-flutter:              &#x27;HOST&#x27;: &#x27;localhost&#x27;,
-flutter:              &#x27;NAME&#x27;: &#x27;iwmsdbGovernment&#x27;,
-flutter:              &#x27;OPTIONS&#x27;: {&#x27;init_command&#x27;: &quot;SET sql_mode=&#x27;STRICT_TRANS_TABLES&#x27;&quot;},
-flutter:              &#x27;PASSWORD&#x27;: &#x27;********************&#x27;,
-flutter:              &#x27;PORT&#x27;: &#x27;3306&#x27;,
-flutter:              &#x27;TEST&#x27;: {&#x27;CHARSET&#x27;: None,
-flutter:                       &#x27;COLLATION&#x27;: None,
-flutter:                       &#x27;MIGRATE&#x27;: True,
-flutter:                       &#x27;MIRROR&#x27;: None,
-flutter:                       &#x27;NAME&#x27;: None},
-flutter:              &#x27;TIME_ZONE&#x27;: None,
-flutter:              &#x27;USER&#x27;: &#x27;root&#x27;}}</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>DATABASE_ROUTERS</td>
-flutter:           <td class="code"><pre>[]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>DATA_UPLOAD_MAX_MEMORY_SIZE</td>
-flutter:           <td class="code"><pre>2621440</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>DATA_UPLOAD_MAX_NUMBER_FIELDS</td>
-flutter:           <td class="code"><pre>1000</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>DATA_UPLOAD_MAX_NUMBER_FILES</td>
-flutter:           <td class="code"><pre>100</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>DATETIME_FORMAT</td>
-flutter:           <td class="code"><pre>&#x27;N j, Y, P&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>DATETIME_INPUT_FORMATS</td>
-flutter:           <td class="code"><pre>[&#x27;%Y-%m-%d %H:%M:%S&#x27;,
-flutter:  &#x27;%Y-%m-%d %H:%M:%S.%f&#x27;,
-flutter:  &#x27;%Y-%m-%d %H:%M&#x27;,
-flutter:  &#x27;%m/%d/%Y %H:%M:%S&#x27;,
-flutter:  &#x27;%m/%d/%Y %H:%M:%S.%f&#x27;,
-flutter:  &#x27;%m/%d/%Y %H:%M&#x27;,
-flutter:  &#x27;%m/%d/%y %H:%M:%S&#x27;,
-flutter:  &#x27;%m/%d/%y %H:%M:%S.%f&#x27;,
-flutter:  &#x27;%m/%d/%y %H:%M&#x27;]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>DATE_FORMAT</td>
-flutter:           <td class="code"><pre>&#x27;N j, Y&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>DATE_INPUT_FORMATS</td>
-flutter:           <td class="code"><pre>[&#x27;%Y-%m-%d&#x27;,
-flutter:  &#x27;%m/%d/%Y&#x27;,
-flutter:  &#x27;%m/%d/%y&#x27;,
-flutter:  &#x27;%b %d %Y&#x27;,
-flutter:  &#x27;%b %d, %Y&#x27;,
-flutter:  &#x27;%d %b %Y&#x27;,
-flutter:  &#x27;%d %b, %Y&#x27;,
-flutter:  &#x27;%B %d %Y&#x27;,
-flutter:  &#x27;%B %d, %Y&#x27;,
-flutter:  &#x27;%d %B %Y&#x27;,
-flutter:  &#x27;%d %B, %Y&#x27;]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>DEBUG</td>
-flutter:           <td class="code"><pre>True</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>DEBUG_PROPAGATE_EXCEPTIONS</td>
-flutter:           <td class="code"><pre>False</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>DECIMAL_SEPARATOR</td>
-flutter:           <td class="code"><pre>&#x27;.&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>DEFAULT_AUTO_FIELD</td>
-flutter:           <td class="code"><pre>&#x27;django.db.models.BigAutoField&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>DEFAULT_CHARSET</td>
-flutter:           <td class="code"><pre>&#x27;utf-8&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>DEFAULT_EXCEPTION_REPORTER</td>
-flutter:           <td class="code"><pre>&#x27;django.views.debug.ExceptionReporter&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>DEFAULT_EXCEPTION_REPORTER_FILTER</td>
-flutter:           <td class="code"><pre>&#x27;django.views.debug.SafeExceptionReporterFilter&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>DEFAULT_FROM_EMAIL</td>
-flutter:           <td class="code"><pre>&#x27;IWMS &lt;sathyazigma@gmail.com&gt;&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>DEFAULT_INDEX_TABLESPACE</td>
-flutter:           <td class="code"><pre>&#x27;&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>DEFAULT_TABLESPACE</td>
-flutter:           <td class="code"><pre>&#x27;&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>DISALLOWED_USER_AGENTS</td>
-flutter:           <td class="code"><pre>[]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>EMAIL_BACKEND</td>
-flutter:           <td class="code"><pre>&#x27;django.core.mail.backends.smtp.EmailBackend&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>EMAIL_HOST</td>
-flutter:           <td class="code"><pre>&#x27;smtp.gmail.com&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>EMAIL_HOST_PASSWORD</td>
-flutter:           <td class="code"><pre>&#x27;********************&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>EMAIL_HOST_USER</td>
-flutter:           <td class="code"><pre>&#x27;sathyazigma@gmail.com&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>EMAIL_PORT</td>
-flutter:           <td class="code"><pre>587</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>EMAIL_SSL_CERTFILE</td>
-flutter:           <td class="code"><pre>None</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>EMAIL_SSL_KEYFILE</td>
-flutter:           <td class="code"><pre>&#x27;********************&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>EMAIL_SUBJECT_PREFIX</td>
-flutter:           <td class="code"><pre>&#x27;[Django] &#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>EMAIL_TIMEOUT</td>
-flutter:           <td class="code"><pre>None</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>EMAIL_USE_LOCALTIME</td>
-flutter:           <td class="code"><pre>False</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>EMAIL_USE_SSL</td>
-flutter:           <td class="code"><pre>False</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>EMAIL_USE_TLS</td>
-flutter:           <td class="code"><pre>True</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>ENABLE_AUTH_USER_SEEDING</td>
-flutter:           <td class="code"><pre>&#x27;********************&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>ENVIRONMENT</td>
-flutter:           <td class="code"><pre>&#x27;development&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>FILE_UPLOAD_DIRECTORY_PERMISSIONS</td>
-flutter:           <td class="code"><pre>None</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>FILE_UPLOAD_HANDLERS</td>
-flutter:           <td class="code"><pre>[&#x27;django.core.files.uploadhandler.MemoryFileUploadHandler&#x27;,
-flutter:  &#x27;django.core.files.uploadhandler.TemporaryFileUploadHandler&#x27;]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>FILE_UPLOAD_MAX_MEMORY_SIZE</td>
-flutter:           <td class="code"><pre>2621440</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>FILE_UPLOAD_PERMISSIONS</td>
-flutter:           <td class="code"><pre>420</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>FILE_UPLOAD_TEMP_DIR</td>
-flutter:           <td class="code"><pre>None</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>FIRST_DAY_OF_WEEK</td>
-flutter:           <td class="code"><pre>0</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>FIXTURE_DIRS</td>
-flutter:           <td class="code"><pre>[]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>FORCE_SCRIPT_NAME</td>
-flutter:           <td class="code"><pre>None</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>FORMAT_MODULE_PATH</td>
-flutter:           <td class="code"><pre>None</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>FORMS_URLFIELD_ASSUME_HTTPS</td>
-flutter:           <td class="code"><pre>False</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>FORM_RENDERER</td>
-flutter:           <td class="code"><pre>&#x27;django.forms.renderers.DjangoTemplates&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>IGNORABLE_404_URLS</td>
-flutter:           <td class="code"><pre>[]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>INSTALLED_APPS</td>
-flutter:           <td class="code"><pre>[&#x27;django.contrib.admin&#x27;,
-flutter:  &#x27;django.contrib.auth&#x27;,
-flutter:  &#x27;django.contrib.contenttypes&#x27;,
-flutter:  &#x27;django.contrib.sessions&#x27;,
-flutter:  &#x27;django.contrib.messages&#x27;,
-flutter:  &#x27;django.contrib.staticfiles&#x27;,
-flutter:  &#x27;rest_framework&#x27;,
-flutter:  &#x27;rest_framework_simplejwt&#x27;,
-flutter:  &#x27;corsheaders&#x27;,
-flutter:  &#x27;drf_yasg&#x27;,
-flutter:  &#x27;app.apps.ApiConfig&#x27;]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>INTERNAL_IPS</td>
-flutter:           <td class="code"><pre>[]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>LANGUAGES</td>
-flutter:           <td class="code"><pre>[(&#x27;af&#x27;, &#x27;Afrikaans&#x27;),
-flutter:  (&#x27;ar&#x27;, &#x27;Arabic&#x27;),
-flutter:  (&#x27;ar-dz&#x27;, &#x27;Algerian Arabic&#x27;),
-flutter:  (&#x27;ast&#x27;, &#x27;Asturian&#x27;),
-flutter:  (&#x27;az&#x27;, &#x27;Azerbaijani&#x27;),
-flutter:  (&#x27;bg&#x27;, &#x27;Bulgarian&#x27;),
-flutter:  (&#x27;be&#x27;, &#x27;Belarusian&#x27;),
-flutter:  (&#x27;bn&#x27;, &#x27;Bengali&#x27;),
-flutter:  (&#x27;br&#x27;, &#x27;Breton&#x27;),
-flutter:  (&#x27;bs&#x27;, &#x27;Bosnian&#x27;),
-flutter:  (&#x27;ca&#x27;, &#x27;Catalan&#x27;),
-flutter:  (&#x27;ckb&#x27;, &#x27;Central Kurdish (Sorani)&#x27;),
-flutter:  (&#x27;cs&#x27;, &#x27;Czech&#x27;),
-flutter:  (&#x27;cy&#x27;, &#x27;Welsh&#x27;),
-flutter:  (&#x27;da&#x27;, &#x27;Danish&#x27;),
-flutter:  (&#x27;de&#x27;, &#x27;German&#x27;),
-flutter:  (&#x27;dsb&#x27;, &#x27;Lower Sorbian&#x27;),
-flutter:  (&#x27;el&#x27;, &#x27;Greek&#x27;),
-flutter:  (&#x27;en&#x27;, &#x27;English&#x27;),
-flutter:  (&#x27;en-au&#x27;, &#x27;Australian English&#x27;),
-flutter:  (&#x27;en-gb&#x27;, &#x27;British English&#x27;),
-flutter:  (&#x27;eo&#x27;, &#x27;Esperanto&#x27;),
-flutter:  (&#x27;es&#x27;, &#x27;Spanish&#x27;),
-flutter:  (&#x27;es-ar&#x27;, &#x27;Argentinian Spanish&#x27;),
-flutter:  (&#x27;es-co&#x27;, &#x27;Colombian Spanish&#x27;),
-flutter:  (&#x27;es-mx&#x27;, &#x27;Mexican Spanish&#x27;),
-flutter:  (&#x27;es-ni&#x27;, &#x27;Nicaraguan Spanish&#x27;),
-flutter:  (&#x27;es-ve&#x27;, &#x27;Venezuelan Spanish&#x27;),
-flutter:  (&#x27;et&#x27;, &#x27;Estonian&#x27;),
-flutter:  (&#x27;eu&#x27;, &#x27;Basque&#x27;),
-flutter:  (&#x27;fa&#x27;, &#x27;Persian&#x27;),
-flutter:  (&#x27;fi&#x27;, &#x27;Finnish&#x27;),
-flutter:  (&#x27;fr&#x27;, &#x27;French&#x27;),
-flutter:  (&#x27;fy&#x27;, &#x27;Frisian&#x27;),
-flutter:  (&#x27;ga&#x27;, &#x27;Irish&#x27;),
-flutter:  (&#x27;gd&#x27;, &#x27;Scottish Gaelic&#x27;),
-flutter:  (&#x27;gl&#x27;, &#x27;Galician&#x27;),
-flutter:  (&#x27;he&#x27;, &#x27;Hebrew&#x27;),
-flutter:  (&#x27;hi&#x27;, &#x27;Hindi&#x27;),
-flutter:  (&#x27;hr&#x27;, &#x27;Croatian&#x27;),
-flutter:  (&#x27;hsb&#x27;, &#x27;Upper Sorbian&#x27;),
-flutter:  (&#x27;hu&#x27;, &#x27;Hungarian&#x27;),
-flutter:  (&#x27;hy&#x27;, &#x27;Armenian&#x27;),
-flutter:  (&#x27;ia&#x27;, &#x27;Interlingua&#x27;),
-flutter:  (&#x27;id&#x27;, &#x27;Indonesian&#x27;),
-flutter:  (&#x27;ig&#x27;, &#x27;Igbo&#x27;),
-flutter:  (&#x27;io&#x27;, &#x27;Ido&#x27;),
-flutter:  (&#x27;is&#x27;, &#x27;Icelandic&#x27;),
-flutter:  (&#x27;it&#x27;, &#x27;Italian&#x27;),
-flutter:  (&#x27;ja&#x27;, &#x27;Japanese&#x27;),
-flutter:  (&#x27;ka&#x27;, &#x27;Georgian&#x27;),
-flutter:  (&#x27;kab&#x27;, &#x27;Kabyle&#x27;),
-flutter:  (&#x27;kk&#x27;, &#x27;Kazakh&#x27;),
-flutter:  (&#x27;km&#x27;, &#x27;Khmer&#x27;),
-flutter:  (&#x27;kn&#x27;, &#x27;Kannada&#x27;),
-flutter:  (&#x27;ko&#x27;, &#x27;Korean&#x27;),
-flutter:  (&#x27;ky&#x27;, &#x27;Kyrgyz&#x27;),
-flutter:  (&#x27;lb&#x27;, &#x27;Luxembourgish&#x27;),
-flutter:  (&#x27;lt&#x27;, &#x27;Lithuanian&#x27;),
-flutter:  (&#x27;lv&#x27;, &#x27;Latvian&#x27;),
-flutter:  (&#x27;mk&#x27;, &#x27;Macedonian&#x27;),
-flutter:  (&#x27;ml&#x27;, &#x27;Malayalam&#x27;),
-flutter:  (&#x27;mn&#x27;, &#x27;Mongolian&#x27;),
-flutter:  (&#x27;mr&#x27;, &#x27;Marathi&#x27;),
-flutter:  (&#x27;ms&#x27;, &#x27;Malay&#x27;),
-flutter:  (&#x27;my&#x27;, &#x27;Burmese&#x27;),
-flutter:  (&#x27;nb&#x27;, &#x27;Norwegian Bokmål&#x27;),
-flutter:  (&#x27;ne&#x27;, &#x27;Nepali&#x27;),
-flutter:  (&#x27;nl&#x27;, &#x27;Dutch&#x27;),
-flutter:  (&#x27;nn&#x27;, &#x27;Norwegian Nynorsk&#x27;),
-flutter:  (&#x27;os&#x27;, &#x27;Ossetic&#x27;),
-flutter:  (&#x27;pa&#x27;, &#x27;Punjabi&#x27;),
-flutter:  (&#x27;pl&#x27;, &#x27;Polish&#x27;),
-flutter:  (&#x27;pt&#x27;, &#x27;Portuguese&#x27;),
-flutter:  (&#x27;pt-br&#x27;, &#x27;Brazilian Portuguese&#x27;),
-flutter:  (&#x27;ro&#x27;, &#x27;Romanian&#x27;),
-flutter:  (&#x27;ru&#x27;, &#x27;Russian&#x27;),
-flutter:  (&#x27;sk&#x27;, &#x27;Slovak&#x27;),
-flutter:  (&#x27;sl&#x27;, &#x27;Slovenian&#x27;),
-flutter:  (&#x27;sq&#x27;, &#x27;Albanian&#x27;),
-flutter:  (&#x27;sr&#x27;, &#x27;Serbian&#x27;),
-flutter:  (&#x27;sr-latn&#x27;, &#x27;Serbian Latin&#x27;),
-flutter:  (&#x27;sv&#x27;, &#x27;Swedish&#x27;),
-flutter:  (&#x27;sw&#x27;, &#x27;Swahili&#x27;),
-flutter:  (&#x27;ta&#x27;, &#x27;Tamil&#x27;),
-flutter:  (&#x27;te&#x27;, &#x27;Telugu&#x27;),
-flutter:  (&#x27;tg&#x27;, &#x27;Tajik&#x27;),
-flutter:  (&#x27;th&#x27;, &#x27;Thai&#x27;),
-flutter:  (&#x27;tk&#x27;, &#x27;Turkmen&#x27;),
-flutter:  (&#x27;tr&#x27;, &#x27;Turkish&#x27;),
-flutter:  (&#x27;tt&#x27;, &#x27;Tatar&#x27;),
-flutter:  (&#x27;udm&#x27;, &#x27;Udmurt&#x27;),
-flutter:  (&#x27;ug&#x27;, &#x27;Uyghur&#x27;),
-flutter:  (&#x27;uk&#x27;, &#x27;Ukrainian&#x27;),
-flutter:  (&#x27;ur&#x27;, &#x27;Urdu&#x27;),
-flutter:  (&#x27;uz&#x27;, &#x27;Uzbek&#x27;),
-flutter:  (&#x27;vi&#x27;, &#x27;Vietnamese&#x27;),
-flutter:  (&#x27;zh-hans&#x27;, &#x27;Simplified Chinese&#x27;),
-flutter:  (&#x27;zh-hant&#x27;, &#x27;Traditional Chinese&#x27;)]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>LANGUAGES_BIDI</td>
-flutter:           <td class="code"><pre>[&#x27;he&#x27;, &#x27;ar&#x27;, &#x27;ar-dz&#x27;, &#x27;ckb&#x27;, &#x27;fa&#x27;, &#x27;ug&#x27;, &#x27;ur&#x27;]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>LANGUAGE_CODE</td>
-flutter:           <td class="code"><pre>&#x27;en-us&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>LANGUAGE_COOKIE_AGE</td>
-flutter:           <td class="code"><pre>None</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>LANGUAGE_COOKIE_DOMAIN</td>
-flutter:           <td class="code"><pre>None</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>LANGUAGE_COOKIE_HTTPONLY</td>
-flutter:           <td class="code"><pre>False</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>LANGUAGE_COOKIE_NAME</td>
-flutter:           <td class="code"><pre>&#x27;django_language&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>LANGUAGE_COOKIE_PATH</td>
-flutter:           <td class="code"><pre>&#x27;/&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>LANGUAGE_COOKIE_SAMESITE</td>
-flutter:           <td class="code"><pre>None</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>LANGUAGE_COOKIE_SECURE</td>
-flutter:           <td class="code"><pre>False</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>LOCALE_PATHS</td>
-flutter:           <td class="code"><pre>[]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>LOGGING</td>
-flutter:           <td class="code"><pre>{}</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>LOGGING_CONFIG</td>
-flutter:           <td class="code"><pre>&#x27;logging.config.dictConfig&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>LOGIN_REDIRECT_URL</td>
-flutter:           <td class="code"><pre>&#x27;/accounts/profile/&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>LOGIN_URL</td>
-flutter:           <td class="code"><pre>&#x27;/accounts/login/&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>LOGOUT_REDIRECT_URL</td>
-flutter:           <td class="code"><pre>None</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>MANAGERS</td>
-flutter:           <td class="code"><pre>[]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>MEDIA_ROOT</td>
-flutter:           <td class="code"><pre>&#x27;/home/admin/localserver/iwmsGovernment/iwms-government-backend/media&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>MEDIA_URL</td>
-flutter:           <td class="code"><pre>&#x27;/media/&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>MESSAGE_STORAGE</td>
-flutter:           <td class="code"><pre>&#x27;django.contrib.messages.storage.fallback.FallbackStorage&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>MIDDLEWARE</td>
-flutter:           <td class="code"><pre>[&#x27;corsheaders.middleware.CorsMiddleware&#x27;,
-flutter:  &#x27;django.middleware.security.SecurityMiddleware&#x27;,
-flutter:  &#x27;django.contrib.sessions.middleware.SessionMiddleware&#x27;,
-flutter:  &#x27;django.middleware.common.CommonMiddleware&#x27;,
-flutter:  &#x27;django.middleware.csrf.CsrfViewMiddleware&#x27;,
-flutter:  &#x27;django.contrib.auth.middleware.AuthenticationMiddleware&#x27;,
-flutter:  &#x27;django.contrib.messages.middleware.MessageMiddleware&#x27;,
-flutter:  &#x27;django.middleware.clickjacking.XFrameOptionsMiddleware&#x27;,
-flutter:  &#x27;app.middleware.module_permission_middleware.ModulePermissionMiddleware&#x27;,
-flutter:  &#x27;app.middleware.request_meta_middleware.RequestMetaMiddleware&#x27;]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>MIGRATION_MODULES</td>
-flutter:           <td class="code"><pre>{}</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>MONTH_DAY_FORMAT</td>
-flutter:           <td class="code"><pre>&#x27;F j&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>MY_API_KEY</td>
-flutter:           <td class="code"><pre>&#x27;********************&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>NUMBER_GROUPING</td>
-flutter:           <td class="code"><pre>0</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>ORS_API_KEY</td>
-flutter:           <td class="code"><pre>&#x27;********************&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>ORS_DIRECTIONS_URL</td>
-flutter:           <td class="code"><pre>&#x27;https://api.openrouteservice.org/v2/directions/driving-car/geojson&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>ORS_OPTIMIZATION_URL</td>
-flutter:           <td class="code"><pre>&#x27;https://api.openrouteservice.org/optimization&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>OTP_EXPIRY_MINUTES</td>
-flutter:           <td class="code"><pre>5</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>OTP_MAX_ATTEMPTS</td>
-flutter:           <td class="code"><pre>3</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>OTP_MAX_REQUESTS_PER_WINDOW</td>
-flutter:           <td class="code"><pre>3</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>OTP_RATE_WINDOW_MINUTES</td>
-flutter:           <td class="code"><pre>10</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>OTP_RESEND_COOLDOWN_MINUTES</td>
-flutter:           <td class="code"><pre>2</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>PASSWORD_HASHERS</td>
-flutter:           <td class="code"><pre>&#x27;********************&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>PASSWORD_RESET_TIMEOUT</td>
-flutter:           <td class="code"><pre>&#x27;********************&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>PREPEND_WWW</td>
-flutter:           <td class="code"><pre>False</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>REST_FRAMEWORK</td>
-flutter:           <td class="code"><pre>{&#x27;DEFAULT_AUTHENTICATION_CLASSES&#x27;: &#x27;********************&#x27;,
-flutter:  &#x27;DEFAULT_PAGINATION_CLASS&#x27;: None,
-flutter:  &#x27;DEFAULT_PERMISSION_CLASSES&#x27;: [&#x27;rest_framework.permissions.IsAuthenticated&#x27;]}</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>ROOT_URLCONF</td>
-flutter:           <td class="code"><pre>&#x27;config.urls&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SECRET_KEY</td>
-flutter:           <td class="code"><pre>&#x27;********************&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SECRET_KEY_FALLBACKS</td>
-flutter:           <td class="code"><pre>&#x27;********************&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SECURE_CONTENT_TYPE_NOSNIFF</td>
-flutter:           <td class="code"><pre>True</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SECURE_CROSS_ORIGIN_OPENER_POLICY</td>
-flutter:           <td class="code"><pre>&#x27;same-origin&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SECURE_HSTS_INCLUDE_SUBDOMAINS</td>
-flutter:           <td class="code"><pre>False</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SECURE_HSTS_PRELOAD</td>
-flutter:           <td class="code"><pre>False</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SECURE_HSTS_SECONDS</td>
-flutter:           <td class="code"><pre>0</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SECURE_PROXY_SSL_HEADER</td>
-flutter:           <td class="code"><pre>None</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SECURE_REDIRECT_EXEMPT</td>
-flutter:           <td class="code"><pre>[]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SECURE_REFERRER_POLICY</td>
-flutter:           <td class="code"><pre>&#x27;same-origin&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SECURE_SSL_HOST</td>
-flutter:           <td class="code"><pre>None</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SECURE_SSL_REDIRECT</td>
-flutter:           <td class="code"><pre>False</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SERVER_EMAIL</td>
-flutter:           <td class="code"><pre>&#x27;root@localhost&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SESSION_CACHE_ALIAS</td>
-flutter:           <td class="code"><pre>&#x27;default&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SESSION_COOKIE_AGE</td>
-flutter:           <td class="code"><pre>1209600</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SESSION_COOKIE_DOMAIN</td>
-flutter:           <td class="code"><pre>None</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SESSION_COOKIE_HTTPONLY</td>
-flutter:           <td class="code"><pre>True</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SESSION_COOKIE_NAME</td>
-flutter:           <td class="code"><pre>&#x27;sessionid&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SESSION_COOKIE_PATH</td>
-flutter:           <td class="code"><pre>&#x27;/&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SESSION_COOKIE_SAMESITE</td>
-flutter:           <td class="code"><pre>&#x27;Lax&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SESSION_COOKIE_SECURE</td>
-flutter:           <td class="code"><pre>False</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SESSION_ENGINE</td>
-flutter:           <td class="code"><pre>&#x27;django.contrib.sessions.backends.db&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SESSION_EXPIRE_AT_BROWSER_CLOSE</td>
-flutter:           <td class="code"><pre>False</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SESSION_FILE_PATH</td>
-flutter:           <td class="code"><pre>None</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SESSION_SAVE_EVERY_REQUEST</td>
-flutter:           <td class="code"><pre>False</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SESSION_SERIALIZER</td>
-flutter:           <td class="code"><pre>&#x27;django.contrib.sessions.serializers.JSONSerializer&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SETTINGS_MODULE</td>
-flutter:           <td class="code"><pre>&#x27;config.settings&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SHORT_DATETIME_FORMAT</td>
-flutter:           <td class="code"><pre>&#x27;m/d/Y P&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SHORT_DATE_FORMAT</td>
-flutter:           <td class="code"><pre>&#x27;m/d/Y&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SIGNING_BACKEND</td>
-flutter:           <td class="code"><pre>&#x27;django.core.signing.TimestampSigner&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SILENCED_SYSTEM_CHECKS</td>
-flutter:           <td class="code"><pre>[]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SIMPLE_JWT</td>
-flutter:           <td class="code"><pre>{&#x27;ACCESS_TOKEN_LIFETIME&#x27;: &#x27;********************&#x27;,
-flutter:  &#x27;ALGORITHM&#x27;: &#x27;HS256&#x27;,
-flutter:  &#x27;AUTH_HEADER_TYPES&#x27;: &#x27;********************&#x27;,
-flutter:  &#x27;BLACKLIST_AFTER_ROTATION&#x27;: False,
-flutter:  &#x27;REFRESH_TOKEN_LIFETIME&#x27;: &#x27;********************&#x27;,
-flutter:  &#x27;ROTATE_REFRESH_TOKENS&#x27;: &#x27;********************&#x27;,
-flutter:  &#x27;SIGNING_KEY&#x27;: &#x27;********************&#x27;,
-flutter:  &#x27;UPDATE_LAST_LOGIN&#x27;: False,
-flutter:  &#x27;USER_ID_FIELD&#x27;: &#x27;pk&#x27;}</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>STATICFILES_DIRS</td>
-flutter:           <td class="code"><pre>[&#x27;/home/admin/localserver/iwmsGovernment/iwms-government-backend/static&#x27;]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>STATICFILES_FINDERS</td>
-flutter:           <td class="code"><pre>[&#x27;django.contrib.staticfiles.finders.FileSystemFinder&#x27;,
-flutter:  &#x27;django.contrib.staticfiles.finders.AppDirectoriesFinder&#x27;]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>STATIC_ROOT</td>
-flutter:           <td class="code"><pre>&#x27;/home/admin/localserver/iwmsGovernment/iwms-government-backend/staticfiles&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>STATIC_URL</td>
-flutter:           <td class="code"><pre>&#x27;/static/&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>STORAGES</td>
-flutter:           <td class="code"><pre>{&#x27;default&#x27;: {&#x27;BACKEND&#x27;: &#x27;django.core.files.storage.FileSystemStorage&#x27;},
-flutter:  &#x27;staticfiles&#x27;: {&#x27;BACKEND&#x27;: &#x27;django.contrib.staticfiles.storage.StaticFilesStorage&#x27;}}</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>SWAGGER_SETTINGS</td>
-flutter:           <td class="code"><pre>{&#x27;DEFAULT_AUTO_SCHEMA_CLASS&#x27;: &#x27;app.utils.swagger.GroupedSwaggerAutoSchema&#x27;,
-flutter:  &#x27;OAUTH2_CONFIG&#x27;: &#x27;********************&#x27;,
-flutter:  &#x27;SECURITY_DEFINITIONS&#x27;: {&#x27;Password&#x27;: &#x27;********************&#x27;},
-flutter:  &#x27;TAGS_SORTER&#x27;: &#x27;alpha&#x27;,
-flutter:  &#x27;USE_SESSION_AUTH&#x27;: &#x27;********************&#x27;}</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>TEMPLATES</td>
-flutter:           <td class="code"><pre>[{&#x27;APP_DIRS&#x27;: True,
-flutter:   &#x27;BACKEND&#x27;: &#x27;django.template.backends.django.DjangoTemplates&#x27;,
-flutter:   &#x27;DIRS&#x27;: [&#x27;/home/admin/localserver/iwmsGovernment/iwms-government-backend/templates&#x27;],
-flutter:   &#x27;OPTIONS&#x27;: {&#x27;context_processors&#x27;: [&#x27;django.template.context_processors.request&#x27;,
-flutter:                                      &#x27;django.contrib.auth.context_processors.auth&#x27;,
-flutter:                                      &#x27;django.contrib.messages.context_processors.messages&#x27;]}}]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>TEST_NON_SERIALIZED_APPS</td>
-flutter:           <td class="code"><pre>[]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>TEST_RUNNER</td>
-flutter:           <td class="code"><pre>&#x27;django.test.runner.DiscoverRunner&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>THOUSAND_SEPARATOR</td>
-flutter:           <td class="code"><pre>&#x27;,&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>TIME_FORMAT</td>
-flutter:           <td class="code"><pre>&#x27;P&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>TIME_INPUT_FORMATS</td>
-flutter:           <td class="code"><pre>[&#x27;%H:%M:%S&#x27;, &#x27;%H:%M:%S.%f&#x27;, &#x27;%H:%M&#x27;]</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>TIME_ZONE</td>
-flutter:           <td class="code"><pre>&#x27;Asia/Kolkata&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>TRIP_ATTENDANCE_COOLDOWN_MINUTES</td>
-flutter:           <td class="code"><pre>1</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>USE_I18N</td>
-flutter:           <td class="code"><pre>True</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>USE_THOUSAND_SEPARATOR</td>
-flutter:           <td class="code"><pre>False</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>USE_TZ</td>
-flutter:           <td class="code"><pre>True</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>USE_X_FORWARDED_HOST</td>
-flutter:           <td class="code"><pre>False</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>USE_X_FORWARDED_PORT</td>
-flutter:           <td class="code"><pre>False</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>WSGI_APPLICATION</td>
-flutter:           <td class="code"><pre>&#x27;config.wsgi.application&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>X_FRAME_OPTIONS</td>
-flutter:           <td class="code"><pre>&#x27;DENY&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:         <tr>
-flutter:           <td>YEAR_MONTH_FORMAT</td>
-flutter:           <td class="code"><pre>&#x27;F Y&#x27;</pre></td>
-flutter:         </tr>
-flutter:       
-flutter:     </tbody>
-flutter:   </table>
-flutter: 
-flutter: </div>
-flutter: </main>
-flutter: 
-flutter: 
-flutter:   <footer id="explanation">
-flutter:     <p>
-flutter:       You’re seeing this error because you have <code>DEBUG = True</code> in your
-flutter:       Django settings file. Change that to <code>False</code>, and Django will
-flutter:       display a standard page generated by the handler for this status code.
-flutter:     </p>
-flutter:   </footer>
-flutter: 
-flutter: </body>
-flutter: </html>
-flutter: 
-flutter: 
-flutter: 
-flutter: *** Response ***
-flutter: uri: https://api.vamosys.com/mobile/getGrpDataForTrustedClients?providerName=BLUEPLANET&fcode=VAM
-flutter: statusCode: 200
-flutter: headers:
-flutter:  access-control-allow-credentials: true
-flutter:  access-control-allow-headers: Origin, X-Requested-With, Content-Type, Accept, Key, Authorization
-flutter:  transfer-encoding: chunked
-flutter:  date: Tue, 14 Jul 2026 04:24:36 GMT
-flutter:  access-control-allow-origin: *
-flutter:  access-control-allow-methods: ACL, CANCELUPLOAD, CHECKIN, CHECKOUT, COPY, DELETE, GET, HEAD, LOCK, MKCALENDAR, MKCOL, MOVE, OPTIONS, POST, PROPFIND, PROPPATCH, PUT, REPORT, SEARCH, UNCHECKOUT, UNLOCK, UPDATE, VERSION-CONTROL
-flutter:  access-control-max-age: 3600
-flutter:  content-type: application/json;charset=UTF-8
-flutter:  server: Jetty(8.1.15.v20140411)
-flutter:  x-application-context: application:9000
-flutter: Response Text:
-flutter: [{rowId: 0, latitude: 28.48726444, longitude: 77.51625778, speed: 0, date: 1784003072000, alert: N, direction: N, position: S, distanceCovered: 17.28, odoDistance: 22892.98, odoMeterDevice: 0.0, tankSize: 0.0, deviceVolt: 0.0, status: ON, altitude: null, color: A, lastSeen: 14-7-2026 09:54:32, ignitionStatus: ON, insideGeoFence: N, isOverSpeed: N, address: 0.13 km away from BETA 2, parkedTime: 0, movingTime: 0, idleTime: 40000, noDataTime: 0, alertDateTime: A, latLngOld: null, loadTruck: nill, loadTrailer: nill, totalTruck: nill, totalTrailer: nill, vehicleBusy: no, fuelLitre: 0.0, temperature: 0.0, powerStatus: 13.0 V, deviceStatus: 13, gsmLevel: 12, startParkedTime: 0, endParkedTime: 0, maxSpeed: 0, averageSpeed: 0, lastComunicationTime: 1784003073496, isOutOfOrder: no, tripName: no, forwardOrBackward: no, enableLog: no, dateSec: 1784003072, digitalInput3: no, fuelSensorVolt: 0, nTankSize: 0.0, noOfTank: 1, sensorCount: 1, gpsSimICCID: 8991940912969331392, madeIn: India, manufacturingDate: , chass
-flutter: 
+image.png
+591×1280
+
+image.png
+739×1600
+supervisor_home_page.dart
+In both "points" and "households" action icon page, there are so many ui issues. please analyse what went wrong in here? what can we make it enhance a better ui and enhance user experience on baisis of button, text, pacements and make it very easily understandable and better flow. ?
+Show less
+Let me ground this in the actual code before critiquing — the yellow highlights look like your own Markup annotations (not an app bug), so I'll focus on the real content/UX issues. Let me find both source files.
+
+Bash Locate both sheet source files
+IN
+cd /Users/zigma-mac/Documents/IWMS/iwms-government-app
+echo "=== find the second sheet (Unassigned / View on map / Waste collected) ==="
+grep -rln "Waste collected\|View on map" lib/ 2>/dev/null
+echo ""
+echo "=== bin_detail_sheet.dart location ==="
+find lib -iname "bin_detail_sheet.dart"
+
+OUT
+=== find the second sheet (Unassigned / View on map / Waste collected) ===
+lib/modules/module5_supervisor/presentation/screens/supervisor_collection_points_screen.dart
+lib/modules/module5_supervisor/presentation/screens/supervisor_households_screen.dart
+lib/modules/module5_supervisor/presentation/screens/supervisor_vehicles_screen.dart
+lib/modules/module5_supervisor/presentation/widgets/supervisor_waste_chart.dart
+lib/modules/module5_supervisor/presentation/widgets/supervisor_assignment_detail_sheet.dart
+lib/modules/module5_supervisor/presentation/widgets/supervisor_assignment_picker_dialog.dart
+lib/modules/module4_admin/dashboard/presentation/screens/dashboard_screen.dart
+
+=== bin_detail_sheet.dart location ===
+lib/modules/module2_driver/presentation/widgets/bin_detail_sheet.dart
+lib/modules/module3_operator/presentation/widgets/bin_detail_sheet.dart
+Found it — these are actually supervisor module screens (supervisor_collection_points_screen.dart and supervisor_households_screen.dart), not driver. Let me read both fully.
+
+Read supervisor_collection_points_screen.dart
+Bash Check households screen for same dialog pattern
+IN
+cd /Users/zigma-mac/Documents/IWMS/iwms-government-app
+grep -n "class _ActionDialog\|class _WasteDialog\|Unassigned\|Waste collected\|View on map\|entries •\|_resolveStatus\|item.name\|class SupervisorHouseholdsScreen" lib/modules/module5_supervisor/presentation/screens/supervisor_households_screen.dart | head -30
+
+OUT
+16:class SupervisorHouseholdsScreen extends StatefulWidget {
+122:                    final status = _resolveStatus(records);
+126:                        title: item.name,
+149:                                      title: item.name,
+286:  _StatusInfo _resolveStatus(List<_HouseholdRecord> records) {
+288:      return const _StatusInfo('Unassigned', SupervisorTheme.mutedText);
+312:      barrierLabel: item.name,
+316:        title: item.name,
+327:                      title: item.name,
+349:      barrierLabel: item.name,
+353:        title: item.name,
+439:        _MetricCard('Unassigned', '${summary.unassigned}',
+524:        _filterChip('Unassigned', _HouseholdFilter.unassigned),
+629:class _ActionDialog extends StatelessWidget {
+657:                label: const Text('View on map'),
+667:                label: const Text('Waste collected'),
+677:class _WasteDialog extends StatelessWidget {
+693:          subtitle: '${rows.length} entries • ${total.toStringAsFixed(2)} kg',
+Bash Check SupervisorCollectionPoint name fallback
+IN
+cd /Users/zigma-mac/Documents/IWMS/iwms-government-app
+grep -n "class SupervisorCollectionPoint" -A 25 lib/modules/module5_supervisor/data/supervisor_models.dart | head -30
+
+OUT
+699:class SupervisorCollectionPoint {
+700-  const SupervisorCollectionPoint({
+701-    required this.uniqueId,
+702-    required this.name,
+703-    required this.collectionType,
+704-    required this.panchayatName,
+705-    required this.municipalityName,
+706-    required this.areaTypeName,
+707-    required this.latitude,
+708-    required this.longitude,
+709-    required this.binCount,
+710-    required this.binQrUrl,
+711-    required this.isActive,
+712-  });
+713-
+714-  final String uniqueId;
+715-  final String name;
+716-  final String collectionType;
+717-  final String panchayatName;
+718-  final String municipalityName;
+719-  final String areaTypeName;
+720-  final String latitude;
+721-  final String longitude;
+722-  final int binCount;
+723-  final String binQrUrl;
+724-  final bool isActive;
+Bash Check SupervisorCollectionPoint fromJson
+IN
+cd /Users/zigma-mac/Documents/IWMS/iwms-government-app
+sed -n '725,760p' lib/modules/module5_supervisor/data/supervisor_models.dart
+
+OUT
+  String get scopeLabel {
+    for (final value in [panchayatName, municipalityName, areaTypeName]) {
+      if (value.trim().isNotEmpty) return value;
+    }
+    return 'Unassigned area';
+  }
+
+  factory SupervisorCollectionPoint.fromJson(Map<String, dynamic> j) {
+    final bins = j['bins_detail'];
+    final firstBin = bins is List && bins.isNotEmpty && bins.first is Map
+        ? Map<String, dynamic>.from(bins.first as Map)
+        : const <String, dynamic>{};
+    return SupervisorCollectionPoint(
+      uniqueId: _str(j['unique_id']),
+      name: _str(j['cp_name']).isNotEmpty
+          ? _str(j['cp_name'])
+          : 'Collection point',
+      collectionType: _str(j['collection_type']),
+      panchayatName: _str(j['panchayat_name']),
+      municipalityName: _str(j['municipality_name']),
+      areaTypeName: _str(j['area_type_name']),
+      latitude: _str(j['latitude']),
+      longitude: _str(j['longitude']),
+      binCount: bins is List ? bins.length : 0,
+      binQrUrl: _str(firstBin['bin_qr']),
+      isActive: j['is_active'] == true,
+    );
+  }
+}
+
+class SupervisorHousehold {
+  const SupervisorHousehold({
+    required this.uniqueId,
+    required this.name,
+    required this.contactNo,
+I read both source files completely (supervisor_collection_points_screen.dart and its near-identical twin supervisor_households_screen.dart — same dialogs, copy-pasted). Here's exactly what's wrong and why.
+
+Root cause: two different "show me the status" dialogs, both under-built
+Tapping "View status" opens _ActionDialog (screenshot 2), and "Waste collected" from there opens _WasteDialog (screenshot 1). Both are generic, minimal popups — much thinner than the nice "Amazon-style" SupervisorAssignmentDetailSheet I already built for the Trips section. That's the real problem: the same information is presented in a worse format here, and the same bugs are duplicated across both the Points and Households screens because the dialogs were copy-pasted, not shared.
+
+Concrete issues, traced to exact lines
+Screenshot 2 — _ActionDialog
+
+"Unassigned" (line 286) is shown bare with zero qualifier — unassigned to what? Should read something like "Not assigned to any trip today".
+"View on map" is silently disabled (onViewMap: records.isEmpty ? null : ..., line 316) whenever the point is unassigned — but nothing tells the user why it's greyed out. A disabled button with no explanation reads as broken.
+"Waste collected" (line 664) is the button that opens the details dialog — it doesn't mark anything as collected. Phrasing it as a past-tense statement on a filled action button is actively misleading about what tapping it does.
+The title item.name is whatever the collection point's cp_name literally is in the data — in this case a technical code (CP-Anthiyur-PLB-01) rather than a human-readable name. That's a data/naming-convention issue, not a rendering bug, but it reads badly regardless.
+Screenshot 1 — _WasteDialog
+
+"1 entries" (line 690: '${rows.length} entries • ...') — no singular/plural branching, always plural.
+collectedWeightKg ?? 0 (line 356) — an item that hasn't been collected yet shows "0.00 kg", indistinguishable from "collected, zero weight." Should show "—" or "Pending" instead.
+The subtitle row (record.assignment.tripCode, e.g. "DRIVER-TN01AB1234-01") is a raw code with no label — a supervisor has no way to know that's a trip plan code.
+The row's leading icon for an uncollected item is a plain hollow circle (Icons.radio_button_unchecked_rounded, line 1142) — visually reads as an interactive checkbox, but it's just a static status icon. That's exactly what looked like a "select item" checkbox in your screenshot.
+No timestamp, no photo, no clear collected/pending color coding beyond a small icon tint — much sparser than what SupervisorAssignmentDetailSheet already shows for the same kind of data.
+What I'd recommend
+Rather than patching these dialogs individually (which just fixes the symptom in two duplicated places), retire _ActionDialog/_WasteDialog entirely and route both screens through SupervisorAssignmentDetailSheet — the same drawer already used by Trips and now Teams. Concretely:
+
+"View status" → open the real assignment's SupervisorAssignmentDetailSheet (need the point's underlying SupervisorAssignment, which both screens already resolve via assignmentMap/records).
+Drop the separate "Waste collected" dialog — the stop timeline in the detail sheet already shows weight, status, timestamp, and photo per stop, colour-coded, correctly pluralized, with real labels.
+For a genuinely unassigned point/household (no assignment today), keep a lightweight empty-state message instead of a dialog — "Not assigned to any trip today," no dead buttons.
+Fix the copy bugs regardless (pluralization, "0.00 kg" → "Pending", labeled trip code) as a fallback for the parts that can't merge into the shared sheet (e.g., the point's own metadata like bin count/QR).
+This also deletes a fair amount of duplicated dialog code (_ActionDialog, _WasteDialog, _DialogCard, _BlurShell, etc. appear near-identically in both files), which is worth doing anyway.
+
+Want me to implement this — consolidate both screens onto SupervisorAssignmentDetailSheet and fix the copy issues?
+
+please fix the ui and flow.
+Read supervisor_households_screen.dart
+Bash Check if detail sheet has a map/navigate action
+IN
+cd /Users/zigma-mac/Documents/IWMS/iwms-government-app
+grep -n "onNavigate\|SupervisorTripMapScreen\|Navigate\|View on map" lib/modules/module5_supervisor/presentation/widgets/supervisor_assignment_detail_sheet.dart
+
+OUT
+149:          tooltip: 'View on map',
+153:                builder: (_) => SupervisorTripMapScreen(
+The detail sheet was updated and now has its own "View on map" action. Let me read its current full structure to route into it cleanly.
+
+Read supervisor_assignment_detail_sheet.dart (lines 2-61)
+The point can appear on multiple trips (records is a list), so routing to a single trip's sheet doesn't cleanly fit. The right fix is a clean, shared bottom sheet replacing both clunky dialogs, fixing every copy/flow bug. Let me check SupervisorStop fields first.
+
+Bash Read SupervisorStop fields
+IN
+cd /Users/zigma-mac/Documents/IWMS/iwms-government-app
+sed -n '/class SupervisorStop/,/factory SupervisorStop.fromBinJson/p' lib/modules/module5_supervisor/data/supervisor_models.dart | head -55
+
+OUT
+class SupervisorStop {
+  const SupervisorStop({
+    required this.uniqueId,
+    required this.sequence,
+    required this.isHousehold,
+    required this.name,
+    required this.isCollected,
+    required this.status,
+    this.entityId,
+    this.binId,
+    this.qrImageUrl,
+    this.subtitle,
+    this.statusReason,
+    this.collectedAt,
+    this.collectedWeightKg,
+    this.imageUrl,
+  });
+
+  final String uniqueId;
+  final int sequence;
+  final bool isHousehold;
+  final String name; // bin name, or household/customer name
+  final String? entityId;
+  final String? binId;
+  final String? qrImageUrl;
+  final String? subtitle; // household address; null for bins
+  final bool isCollected;
+  final String
+      status; // Pending / Collected / Not Available / Collect Later / Skipped
+  final String? statusReason;
+  final DateTime? collectedAt;
+  final double? collectedWeightKg;
+  // Proof photo captured during collection. Bin collection points never carry
+  // one today (the feature is bin-side planned, not yet implemented); a
+  // household stop carries one only if the driver's weighment attached a
+  // photo. Null in both cases means "no photo", never an error state.
+  final String? imageUrl;
+
+  bool get isSkippedOrDeferred =>
+      !isCollected &&
+      const {'not available', 'collect later', 'skipped'}
+          .contains(status.trim().toLowerCase());
+
+  factory SupervisorStop.fromBinJson(Map<String, dynamic> json) {
+SupervisorStop has collectedAt, imageUrl, status, reason, weight — everything I need. Let me build a shared status sheet widget that both screens use.
+
+Write supervisor_point_status_sheet.dart
+341 lines
+import 'package:flutter/material.dart';
+
+import 'package:iwms_citizen_app/modules/module5_supervisor/data/supervisor_models.dart';
+import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/theme/supervisor_theme.dart';
+
+/// One trip's servicing of a point/household: the stop plus which trip it
+/// belongs to.
+class SupervisorPointVisit {
+  const SupervisorPointVisit({required this.stop, required this.tripCode});
+
+  final SupervisorStop stop;
+  final String tripCode;
+}
+
+/// A clean bottom sheet showing the collection status of a single collection
+/// point or household across today's trip(s). Replaces the older
+/// _ActionDialog + _WasteDialog center-popups: one drawer, correct copy
+/// (pluralization, "Pending" vs "0.00 kg"), labelled trip codes, real status
+/// tone/icon (not a checkbox-looking hollow circle), an honest empty state for
+/// unassigned points, and an optional "View on map" that is simply absent
+/// (never a dead greyed button) when there is nothing to map.
+class SupervisorPointStatusSheet extends StatelessWidget {
+  const SupervisorPointStatusSheet({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.visits,
+    this.onViewMap,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<SupervisorPointVisit> visits;
+
+  /// Provided only when a mappable trip exists for this point. When null, the
+  /// map button is not rendered at all.
+  final VoidCallback? onViewMap;
+
+  static Future<void> show(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required List<SupervisorPointVisit> visits,
+    VoidCallback? onViewMap,
+  }) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => SupervisorPointStatusSheet(
+        title: title,
+        subtitle: subtitle,
+        visits: visits,
+        onViewMap: onViewMap,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final collectedTotal = visits
+        .where((v) => v.stop.isCollected)
+        .fold<double>(0, (sum, v) => sum + (v.stop.collectedWeightKg ?? 0));
+    final servicedCount = visits.where((v) => v.stop.isCollected).length;
+
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+      ),
+      decoration: const BoxDecoration(
+        color: SupervisorTheme.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 12),
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: SupervisorTheme.hairline,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: SupervisorTheme.strongText,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    color: SupervisorTheme.mutedText,
+                  ),
+                ),
+                if (visits.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    _summaryLine(servicedCount, visits.length, collectedTotal),
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: SupervisorTheme.strongText,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          Flexible(
+            child: visits.isEmpty
+                ? _emptyState()
+                : ListView.separated(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    shrinkWrap: true,
+                    itemCount: visits.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (_, i) => _VisitRow(visit: visits[i]),
+                  ),
+          ),
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              16,
+              20,
+              16 + MediaQuery.viewPaddingOf(context).bottom,
+            ),
+            child: onViewMap == null
+                ? const SizedBox.shrink()
+                : SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: onViewMap,
+                      icon: const Icon(Icons.map_outlined, size: 18),
+                      label: const Text('View on map'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: SupervisorTheme.accent,
+                        side: BorderSide(
+                          color: SupervisorTheme.accent.withValues(alpha: 0.4),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: SupervisorTheme.chipRadius,
+                        ),
+                      ),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _summaryLine(int serviced, int total, double kg) {
+    final trips = total == 1 ? '1 trip' : '$total trips';
+    if (serviced == 0) {
+      return 'On $trips today · not yet collected';
+    }
+    return 'Collected on $serviced of $trips · ${kg.toStringAsFixed(2)} kg';
+  }
+
+  Widget _emptyState() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+      child: Row(
+        children: [
+          const Icon(Icons.event_busy_outlined,
+              size: 18, color: SupervisorTheme.mutedText),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'Not assigned to any trip today.',
+              style: TextStyle(
+                fontSize: 13,
+                color: SupervisorTheme.mutedText,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VisitRow extends StatelessWidget {
+  const _VisitRow({required this.visit});
+
+  final SupervisorPointVisit visit;
+
+  @override
+  Widget build(BuildContext context) {
+    final stop = visit.stop;
+    final tone = _StopTone.of(stop);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: SupervisorTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: tone.color.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(tone.icon, color: tone.color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        tone.label,
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w800,
+                          color: tone.color,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      stop.isCollected
+                          ? '${(stop.collectedWeightKg ?? 0).toStringAsFixed(2)} kg'
+                          : '—',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: stop.isCollected
+                            ? SupervisorTheme.strongText
+                            : SupervisorTheme.mutedText,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Trip: ${visit.tripCode}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    color: SupervisorTheme.mutedText,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (stop.isCollected && stop.collectedAt != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    'Collected at ${_formatTime(stop.collectedAt!)}',
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: SupervisorTheme.mutedText,
+                    ),
+                  ),
+                ],
+                if ((stop.statusReason ?? '').trim().isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    '"${stop.statusReason!.trim()}"',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                      color: SupervisorTheme.mutedText,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatTime(DateTime dt) {
+    final h = dt.hour.toString().padLeft(2, '0');
+    final m = dt.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+}
+
+class _StopTone {
+  const _StopTone(this.label, this.color, this.icon);
+
+  final String label;
+  final Color color;
+  final IconData icon;
+
+  static _StopTone of(SupervisorStop stop) {
+    if (stop.isCollected) {
+      return const _StopTone(
+        'Collected',
+        SupervisorTheme.success,
+        Icons.check_circle_rounded,
+      );
+    }
+    final s = stop.status.trim().toLowerCase();
+    if (s == 'collect later') {
+      return const _StopTone(
+        'Collect Later',
+        SupervisorTheme.warning,
+        Icons.schedule_rounded,
+      );
+    }
+    if (s == 'not available' ||
+        s == 'skipped' ||
+        s == 'missed' ||
+        s == 'not collected') {
+      return const _StopTone(
+        'Not Available',
+        SupervisorTheme.danger,
+        Icons.cancel_rounded,
+      );
+    }
+    return const _StopTone(
+      'Pending',
+      SupervisorTheme.info,
+      Icons.pending_outlined,
+    );
+  }
+}
+Bash Analyze new shared status sheet
+IN
+cd /Users/zigma-mac/Documents/IWMS/iwms-government-app
+/Users/zigma-mac/Documents/flutter/bin/dart analyze lib/modules/module5_supervisor/presentation/widgets/supervisor_point_status_sheet.dart 2>&1 | tail -10
+
+OUT
+Analyzing supervisor_point_status_sheet.dart...
+No issues found!
+Now let's rewire the collection-points screen to use it, and remove the dead dialog classes. First the imports and the _showStatusDialog call:
+
+Edit supervisor_collection_points_screen.dart
+Added 1 line
+Now let's replace _showStatusDialog/_showWasteDialog with a single call to the new sheet:
+
+Edit supervisor_collection_points_screen.dart
+Removed 30 lines
+Let me remove the now-dead _ActionDialog, _WasteDialog, _WasteRow, and their helper functions. Let me view the current region:
+
+Read supervisor_collection_points_screen.dart (lines 596-625)
+Bash Find boundaries of dead classes/functions
+IN
+cd /Users/zigma-mac/Documents/IWMS/iwms-government-app
+grep -n "^class _ActionDialog\|^class _WasteDialog\|^class _WasteRow\|^class _QrDialog\|^_StatusInfo _toneFor\|^IconData _iconFor\|^bool _isFailure" lib/modules/module5_supervisor/presentation/screens/supervisor_collection_points_screen.dart
+
+OUT
+597:class _ActionDialog extends StatelessWidget {
+645:class _WasteDialog extends StatelessWidget {
+743:class _WasteRow {
+759:class _QrDialog extends StatelessWidget {
+1086:bool _isFailure(String status) {
+1094:_StatusInfo _toneFor(String status) {
+1108:IconData _iconFor(String status) {
+Read supervisor_collection_points_screen.dart (lines 744-761)
+Bash Delete dead dialog classes, locate remaining dead helpers
+IN
+cd /Users/zigma-mac/Documents/IWMS/iwms-government-app
+# Delete _ActionDialog + _WasteDialog + _WasteRow block: lines 597-758 (inclusive)
+sed -i '' '597,758d' lib/modules/module5_supervisor/presentation/screens/supervisor_collection_points_screen.dart
+echo "removed dialog block; now re-find _toneFor/_iconFor"
+grep -n "^_StatusInfo _toneFor\|^IconData _iconFor\|^String _resolveMediaUrl\|^bool _isFailure" lib/modules/module5_supervisor/presentation/screens/supervisor_collection_points_screen.dart
+
+OUT
+removed dialog block; now re-find _toneFor/_iconFor
+924:bool _isFailure(String status) {
+932:_StatusInfo _toneFor(String status) {
+946:IconData _iconFor(String status) {
+954:String _resolveMediaUrl(String path) {
+Read supervisor_collection_points_screen.dart (lines 933-954)
+Bash Remove dead helpers and analyze collection points screen
+IN
+cd /Users/zigma-mac/Documents/IWMS/iwms-government-app
+# Delete _toneFor (932-944) and _iconFor (946-952) plus the blank line 945 & 953: remove 932-953
+sed -i '' '932,953d' lib/modules/module5_supervisor/presentation/screens/supervisor_collection_points_screen.dart
+/Users/zigma-mac/Documents/flutter/bin/dart analyze lib/modules/module5_supervisor/presentation/screens/supervisor_collection_points_screen.dart 2>&1 | tail -15
+
+OUT
+Analyzing supervisor_collection_points_screen.dart...
+No issues found!
+Collection points screen is clean. Now let's do the same for the households screen:
+
+Edit supervisor_households_screen.dart
+Added 1 line
+Edit supervisor_households_screen.dart
+Removed 30 lines
+Bash Find dead class/function boundaries in households screen
+IN
+cd /Users/zigma-mac/Documents/IWMS/iwms-government-app
+grep -n "^class _ActionDialog\|^class _WasteDialog\|^class _WasteRow\|^class _QrDialog\|^_StatusInfo _toneFor\|^IconData _iconFor\|^bool _isFailure" lib/modules/module5_supervisor/presentation/screens/supervisor_households_screen.dart
+
+OUT
+600:class _ActionDialog extends StatelessWidget {
+648:class _WasteDialog extends StatelessWidget {
+746:class _WasteRow {
+762:class _QrDialog extends StatelessWidget {
+1089:bool _isFailure(String status) {
+1097:_StatusInfo _toneFor(String status) {
+1111:IconData _iconFor(String status) {
+
+image.png
+591×1280
+sory for interrupting, but also take care of this, or just place the qr minimized at the end of the card. continue your work, sorry for interrruption. jsut wanna give you a note on this.
+Bash Confirm _WasteRow end boundary before _QrDialog
+IN
+cd /Users/zigma-mac/Documents/IWMS/iwms-government-app
+sed -n '760,762p' lib/modules/module5_supervisor/presentation/screens/supervisor_households_screen.dart
+
+OUT
+}
+
+class _QrDialog extends StatelessWidget {
+Noted on the QR overflow — I'll fix that too. First finishing the dead-code removal on the households screen:
+
+Bash Delete dead dialog block, re-find dead helpers
+IN
+cd /Users/zigma-mac/Documents/IWMS/iwms-government-app
+sed -i '' '600,761d' lib/modules/module5_supervisor/presentation/screens/supervisor_households_screen.dart
+grep -n "^_StatusInfo _toneFor\|^IconData _iconFor" lib/modules/module5_supervisor/presentation/screens/supervisor_households_screen.dart
+
+OUT
+935:_StatusInfo _toneFor(String status) {
+949:IconData _iconFor(String status) {
+Bash Read toneFor/iconFor block before deleting
+IN
+cd /Users/zigma-mac/Documents/IWMS/iwms-government-app
+sed -n '933,952p' lib/modules/module5_supervisor/presentation/screens/supervisor_households_screen.dart
+
+OUT
+}
+
+_StatusInfo _toneFor(String status) {
+  final normalized = status.trim().toLowerCase();
+  if (normalized == 'collected') {
+    return const _StatusInfo('Collected', SupervisorTheme.success);
+  }
+  if (normalized == 'collect later') {
+    return const _StatusInfo('Collect Later', SupervisorTheme.warning);
+  }
+  if (_isFailure(status)) {
+    return const _StatusInfo('Not Available', SupervisorTheme.danger);
+  }
+  return const _StatusInfo('Pending', SupervisorTheme.info);
+}
+
+IconData _iconFor(String status) {
+  final normalized = status.trim().toLowerCase();
+  if (normalized == 'collected') return Icons.check_circle_rounded;
+  if (normalized == 'collect later') return Icons.schedule_rounded;
+Bash Confirm iconFor end line
+IN
+cd /Users/zigma-mac/Documents/IWMS/iwms-government-app
+# _toneFor starts line 935, _iconFor ends at 954 ("}"). Remove 934(blank)-954.
+sed -n '954,956p' lib/modules/module5_supervisor/presentation/screens/supervisor_households_screen.dart
+
+OUT
+  return Icons.radio_button_unchecked_rounded;
+}
+Bash Remove dead helpers, analyze households screen
+IN
+cd /Users/zigma-mac/Documents/IWMS/iwms-government-app
+# Delete blank 934 + _toneFor + _iconFor (935-955)
+sed -i '' '934,955d' lib/modules/module5_supervisor/presentation/screens/supervisor_households_screen.dart
+/Users/zigma-mac/Documents/flutter/bin/dart analyze lib/modules/module5_supervisor/presentation/screens/supervisor_households_screen.dart 2>&1 | tail -12
+
+OUT
+Analyzing supervisor_households_screen.dart...
+No issues found!
+Both screens are clean. Now the QR-dialog overflow. The root cause: in _DialogCard, the child (the QR's scroll view) sits in a mainAxisSize.min Column with no Flexible, so it takes unbounded intrinsic height and overflows instead of scrolling. Let me fix _DialogCard in both files.
+
+Read supervisor_collection_points_screen.dart (lines 787-841)
+Edit supervisor_collection_points_screen.dart
+Added 2 lines
+Now the same _DialogCard fix in the households file:
+
+Bash Locate _DialogCard child line in households
+IN
+cd /Users/zigma-mac/Documents/IWMS/iwms-government-app
+grep -n "const SizedBox(height: 16),$" lib/modules/module5_supervisor/presentation/screens/supervisor_households_screen.dart | tail -5
+echo "--- find the 'child,' inside _DialogCard ---"
+grep -n "^            child,$" lib/modules/module5_supervisor/presentation/screens/supervisor_households_screen.dart
+
+OUT
+795:            const SizedBox(height: 16),
+816:            const SizedBox(height: 16),
+--- find the 'child,' inside _DialogCard ---
+817:            child,
+Read supervisor_households_screen.dart (lines 815-822)
+sorry continue
+Edit supervisor_households_screen.dart
+Added 2 lines

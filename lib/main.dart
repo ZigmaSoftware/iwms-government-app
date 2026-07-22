@@ -1,3 +1,4 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'package:iwms_citizen_app/localization/app_localizations.dart';
 import 'package:iwms_citizen_app/core/di.dart';
+import 'package:iwms_citizen_app/core/push/push_notification_service.dart';
 import 'package:iwms_citizen_app/logic/auth/auth_bloc.dart';
 import 'package:iwms_citizen_app/logic/theme/theme_cubit.dart';
 import 'package:iwms_citizen_app/logic/locale/locale_cubit.dart';
@@ -17,6 +19,13 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await setupDI();
+
+  // Safe no-op until Firebase is configured (see push_notification_service.dart).
+  try {
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  } catch (_) {
+    // Firebase not configured yet — nothing to do.
+  }
 
   final authBloc = getIt<AuthBloc>();
 

@@ -1,22 +1,87 @@
 import 'package:flutter/material.dart';
+import 'package:iwms_citizen_app/core/api_config.dart';
+import 'package:iwms_citizen_app/core/env.dart';
+import 'package:iwms_citizen_app/core/network/authorized_dio.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/theme/supervisor_theme.dart';
 
 /// Supervisor header.
-class SupervisorHeader extends StatelessWidget {
+class SupervisorHeader extends StatefulWidget {
   const SupervisorHeader({
     super.key,
     required this.name,
     required this.onLogout,
+    this.empId,
     this.designation = 'Supervisor',
     this.zoneLabel = '',
     this.zoneCount = 0,
   });
 
   final String name;
+  // Staff unique id (STC-...). Used to fetch the registered attendance face so
+  // the avatar shows it instead of the placeholder. Null → placeholder only.
+  final String? empId;
   final String designation;
   final String zoneLabel;
   final int zoneCount;
   final VoidCallback onLogout;
+
+  @override
+  State<SupervisorHeader> createState() => _SupervisorHeaderState();
+}
+
+class _SupervisorHeaderState extends State<SupervisorHeader> {
+  static const String _baseUrl = kOperatorProfileBaseUrl;
+  String? _imageName;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchProfileImage();
+  }
+
+  @override
+  void didUpdateWidget(covariant SupervisorHeader oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.empId != widget.empId) {
+      _fetchProfileImage();
+    }
+  }
+
+  Future<void> _fetchProfileImage() async {
+    final empId = widget.empId?.trim() ?? '';
+    if (empId.isEmpty) return;
+    try {
+      final dio = await authorizedDio();
+      final response = await dio.get(
+        '${ApiConfig.attendanceBase}staff-profile/',
+        queryParameters: {'staff_id_id': empId},
+      );
+      final json = response.data;
+      if (json is Map && json['status'] == 'success') {
+        final data = json['data'];
+        // Prefer the face registered for attendance; fall back to an
+        // admin-uploaded staff photo.
+        final registered = data?['attendance_reg_image']?.toString() ?? '';
+        final staffPhoto = data?['photo']?.toString() ?? '';
+        final resolved = registered.isNotEmpty ? registered : staffPhoto;
+        if (!mounted) return;
+        setState(() => _imageName = resolved.isNotEmpty ? resolved : null);
+      }
+    } catch (_) {
+      // Non-fatal: keep the placeholder avatar.
+    }
+  }
+
+  String _convertToUrl(String path) {
+    final clean = path.replaceAll('\\', '/');
+    // Already an absolute URL → use as-is.
+    if (clean.startsWith('http')) return clean;
+    // The API serializes ImageFields to their `.url` (e.g. "/media/..."), so it
+    // already carries the /media/ prefix — just join to the origin. Only a bare
+    // relative path (no leading slash) needs /media/ added.
+    if (clean.startsWith('/')) return '$_baseUrl$clean';
+    return '$_baseUrl/media/$clean';
+  }
 
   String _toTitleCase(String s) => s
       .split(' ')
@@ -25,12 +90,12 @@ class SupervisorHeader extends StatelessWidget {
           : '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}')
       .join(' ');
 
-  String _greeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
-  }
+  // String _greeting() {
+  //   final hour = DateTime.now().hour;
+  //   if (hour < 12) return 'Good morning';
+  //   if (hour < 17) return 'Good afternoon';
+  //   return 'Good evening';
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -66,17 +131,31 @@ class SupervisorHeader extends StatelessWidget {
   }
 
   Widget _avatar() {
+    final image = _imageName;
     return CircleAvatar(
       radius: 23,
       backgroundColor: SupervisorTheme.surface,
       child: ClipOval(
-        child: Image.asset(
-          'assets/icons/profile_s.png',
-          width: 46,
-          height: 46,
-          fit: BoxFit.cover,
-        ),
+        child: (image != null && image.isNotEmpty)
+            ? Image.network(
+                _convertToUrl(image),
+                width: 46,
+                height: 46,
+                fit: BoxFit.cover,
+                // Fall back to the placeholder if the image fails to load.
+                errorBuilder: (_, __, ___) => _placeholderAvatar(),
+              )
+            : _placeholderAvatar(),
       ),
+    );
+  }
+
+  Widget _placeholderAvatar() {
+    return Image.asset(
+      'assets/icons/profile_s.png',
+      width: 46,
+      height: 46,
+      fit: BoxFit.cover,
     );
   }
 
@@ -86,7 +165,7 @@ class SupervisorHeader extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          '${_greeting()}, ${_toTitleCase(name)}',
+          _toTitleCase(widget.name),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
@@ -104,7 +183,7 @@ class SupervisorHeader extends StatelessWidget {
             const SizedBox(width: 4),
             Flexible(
               child: Text(
-                designation,
+                widget.designation,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
@@ -124,42 +203,24 @@ class SupervisorHeader extends StatelessWidget {
     return SizedBox(
       width: 40,
       height: 40,
-      child: PopupMenuButton<_HeaderMenuAction>(
+      child: IconButton(
         padding: EdgeInsets.zero,
+        tooltip: 'Logout',
+        onPressed: widget.onLogout,
         icon: const Icon(
-          Icons.more_vert_rounded,
+          Icons.logout_rounded,
           color: SupervisorTheme.strongText,
           size: 22,
         ),
-        tooltip: 'More options',
-        onSelected: (action) {
-          switch (action) {
-            case _HeaderMenuAction.logout:
-              onLogout();
-          }
-        },
-        itemBuilder: (context) => const [
-          PopupMenuItem(
-            value: _HeaderMenuAction.logout,
-            child: Row(
-              children: [
-                Icon(Icons.logout_rounded,
-                    size: 18, color: SupervisorTheme.strongText),
-                SizedBox(width: 10),
-                Text('Logout'),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
 
   Widget _zoneStrip() {
-    final label = zoneLabel.trim().isNotEmpty
-        ? zoneLabel
-        : (zoneCount > 0
-            ? '$zoneCount zone${zoneCount == 1 ? '' : 's'} assigned'
+    final label = widget.zoneLabel.trim().isNotEmpty
+        ? widget.zoneLabel
+        : (widget.zoneCount > 0
+            ? '${widget.zoneCount} zone${widget.zoneCount == 1 ? '' : 's'} assigned'
             : 'No zones assigned');
     return Row(
       children: [
@@ -199,5 +260,3 @@ class SupervisorHeader extends StatelessWidget {
     );
   }
 }
-
-enum _HeaderMenuAction { logout }

@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 
 import 'package:iwms_citizen_app/modules/module5_supervisor/data/supervisor_models.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/theme/supervisor_theme.dart';
+import 'package:iwms_citizen_app/shared/widgets/crew_avatar_stack.dart';
 
 /// Card representing one daily trip assignment in the supervisor's zones.
 /// Ports OperatorTripSummaryCard's layout: a tinted status header bar, area
-/// name + waste chip, staff/vehicle row, and an approval-status footer chip.
+/// name + waste chip, and a compact staff/vehicle row.
 class SupervisorAssignmentCard extends StatelessWidget {
   const SupervisorAssignmentCard({
     super.key,
@@ -63,8 +64,6 @@ class SupervisorAssignmentCard extends StatelessWidget {
                         letterSpacing: 0,
                       ),
                     ),
-                    const Spacer(),
-                    _approvalChip(),
                   ],
                 ),
               ),
@@ -139,7 +138,22 @@ class SupervisorAssignmentCard extends StatelessWidget {
   }
 
   Widget _staffRow() {
+    final crew = assignment.crew;
     final children = <Widget>[];
+    if (crew != null &&
+        (crew.driver != null ||
+            crew.operator != null ||
+            crew.extraOperators.isNotEmpty)) {
+      children.addAll([
+        CrewAvatarStack(
+          crew: crew,
+          size: 22,
+          overlap: 12,
+          borderColor: SupervisorTheme.surface,
+        ),
+        const SizedBox(width: 8),
+      ]);
+    }
     if (assignment.vehicleNo.isNotEmpty) {
       children.addAll([
         const Icon(Icons.local_shipping_outlined,
@@ -182,48 +196,6 @@ class SupervisorAssignmentCard extends StatelessWidget {
       ));
     }
     return Row(children: children);
-  }
-
-  Widget _approvalChip() {
-    final approval = assignment.approvalStatus.toUpperCase();
-    late final Color color;
-    late final IconData icon;
-    switch (approval) {
-      case 'APPROVED':
-        color = SupervisorTheme.success;
-        icon = Icons.verified_rounded;
-        break;
-      case 'REJECTED':
-        color = SupervisorTheme.danger;
-        icon = Icons.block_rounded;
-        break;
-      default:
-        color = SupervisorTheme.warning;
-        icon = Icons.hourglass_bottom_rounded;
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: SupervisorTheme.chipRadius,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: color),
-          const SizedBox(width: 4),
-          Text(
-            approval,
-            style: TextStyle(
-              color: color,
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _wasteChip(String waste) {

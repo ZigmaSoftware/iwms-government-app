@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:iwms_citizen_app/core/di.dart';
 import 'package:iwms_citizen_app/core/theme/app_colors.dart';
 import 'package:iwms_citizen_app/core/theme/app_text_styles.dart';
@@ -80,7 +81,17 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
   late final CollectionHistoryService _historyService;
   bool _collectionSubmitted = false;
   bool _routeObserverSubscribed = false;
+  final ScrollController _scrollController = ScrollController();
   final Map<String, TextEditingController> _manualWeightControllers = {};
+  final Map<String, GlobalKey> _wasteSectionKeys = {};
+  final DateTime _sessionStartedAt = DateTime.now();
+  bool _loadingContextDetails = false;
+  String _customerPhone = '';
+  String _customerAddress = '';
+  String _collectionArea = '';
+  String _assignmentLabel = '';
+  String _scheduledCollectionTime = '';
+  String _collectionDateLabel = '';
 
   List<Map<String, dynamic>> wasteTypes = [];
   Map<String, Map<String, dynamic>> _wasteData = {};
@@ -114,6 +125,143 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
       }
     } catch (_) {}
     return const {};
+  }
+
+  String _stringify(dynamic value) => value?.toString().trim() ?? '';
+
+  String _readDisplayName(dynamic value) {
+    if (value is Map) {
+      final map = Map<String, dynamic>.from(value);
+      return _stringify(
+        map['name'] ??
+            map['display_code'] ??
+            map['title'] ??
+            map['label'] ??
+            map['unique_id'] ??
+            map['id'],
+      );
+    }
+    return _stringify(value);
+  }
+
+  String _normalizeAddress(Map<String, dynamic> map) {
+    final direct = _stringify(map['address']);
+    if (direct.isNotEmpty) return direct;
+    final parts = [
+      map['building_no'],
+      map['street'],
+      map['area'],
+      map['landmark'],
+      map['pincode'],
+    ].map(_stringify).where((part) => part.isNotEmpty).toList();
+    return parts.join(', ');
+  }
+
+  String _formatClock(String raw, {String? fallback}) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return fallback ?? '—';
+    try {
+      final parsed = DateFormat('HH:mm:ss').parseStrict(trimmed);
+      return DateFormat('hh:mm a').format(parsed);
+    } catch (_) {}
+    try {
+      final parsed = DateFormat('HH:mm').parseStrict(trimmed);
+      return DateFormat('hh:mm a').format(parsed);
+    } catch (_) {}
+    return trimmed;
+  }
+
+  String _formatCollectionDate(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) {
+      return DateFormat('dd MMM yyyy').format(_sessionStartedAt);
+    }
+    try {
+      return DateFormat('dd MMM yyyy').format(DateTime.parse(trimmed));
+    } catch (_) {
+      return trimmed;
+    }
+  }
+
+  Future<void> _loadCollectionContext() async {
+    _safeSetState(() => _loadingContextDetails = true);
+
+    var phone = widget.contactNo.trim();
+    var address = '';
+    var area = '';
+    var assignment = '';
+    var scheduledTime = '';
+    var collectionDate = DateFormat('dd MMM yyyy').format(_sessionStartedAt);
+
+    try {
+      final customerUri = Uri.parse('${ApiConfig.desktopBase}waste/customer/')
+          .replace(queryParameters: {'unique_id': widget.customerId});
+      final customerResp = await http
+          .get(customerUri, headers: await _authHeaders())
+          .timeout(const Duration(seconds: 8));
+      if (customerResp.statusCode == 200) {
+        final payload = jsonDecode(customerResp.body);
+        if (payload is Map && payload['status'] == 'success') {
+          final data = payload['data'];
+          if (data is Map) {
+            final customer = Map<String, dynamic>.from(data);
+            final fetchedPhone = _stringify(customer['contact_no']);
+            if (fetchedPhone.isNotEmpty) phone = fetchedPhone;
+            final fetchedAddress = _normalizeAddress(customer);
+            if (fetchedAddress.isNotEmpty) address = fetchedAddress;
+          }
+        }
+      }
+    } catch (_) {}
+
+    final assignmentId = widget.assignmentId?.trim() ?? '';
+    if (assignmentId.isNotEmpty) {
+      try {
+        final dio = await authorizedDio();
+        final response =
+            await dio.get('${ApiConfig.assignments}$assignmentId/');
+        final data = response.data;
+        if (data is Map) {
+          final assignmentMap = Map<String, dynamic>.from(data);
+          area = _readDisplayName(assignmentMap['panchayat']);
+          area =
+              area.isNotEmpty ? area : _readDisplayName(assignmentMap['ward']);
+          area = area.isNotEmpty
+              ? area
+              : _stringify(
+                  assignmentMap['panchayat_name'] ??
+                      assignmentMap['ward_name'] ??
+                      assignmentMap['area_name'],
+                );
+
+          assignment = _readDisplayName(assignmentMap['trip_plan']);
+          assignment = assignment.isNotEmpty
+              ? assignment
+              : _stringify(
+                  assignmentMap['assignment_name'] ??
+                      assignmentMap['display_code'] ??
+                      assignmentMap['unique_id'],
+                );
+
+          scheduledTime = _formatClock(
+            _stringify(assignmentMap['scheduled_time']),
+            fallback: DateFormat('hh:mm a').format(_sessionStartedAt),
+          );
+          collectionDate =
+              _formatCollectionDate(_stringify(assignmentMap['trip_date']));
+        }
+      } catch (_) {}
+    }
+
+    _safeSetState(() {
+      _customerPhone = phone;
+      _customerAddress = address;
+      _collectionArea = area;
+      _assignmentLabel = assignment;
+      _scheduledCollectionTime = scheduledTime;
+      _collectionDateLabel = collectionDate;
+      _loadingContextDetails = false;
+    });
   }
 
   @override
@@ -158,6 +306,7 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
 
     // Fetch latest types from API
     _fetchWasteTypes();
+    _loadCollectionContext();
   }
 
   // ==================== FETCH WASTE TYPES ====================
@@ -281,6 +430,23 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
     }
   }
 
+  List<double> _quickWeightsFor(String type) {
+    if (type.contains('wet') || type.contains('dry')) {
+      return const [10, 25, 50];
+    }
+    return const [5, 10, 25];
+  }
+
+  String _formatQuickWeight(double value) {
+    return value % 1 == 0 ? value.toInt().toString() : value.toStringAsFixed(2);
+  }
+
+  void _setQuickWeight(String type, double value) {
+    final text = _formatQuickWeight(value);
+    _syncManualWeightController(type, text);
+    setState(() => _updateManualWeight(type, text));
+  }
+
   void _startEditingAddedWeight(String type) {
     if (!_wasteData.containsKey(type)) return;
     final current = _wasteData[type]!;
@@ -335,6 +501,7 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
       _connection?.dispose();
       connected = false;
     } catch (_) {}
+    _scrollController.dispose();
     for (final controller in _manualWeightControllers.values) {
       controller.dispose();
     }
@@ -413,10 +580,15 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
         }
     };
 
+    for (final controller in _manualWeightControllers.values) {
+      controller.dispose();
+    }
     _manualWeightControllers.clear();
+    _wasteSectionKeys.clear();
     for (final type in _wasteData.keys) {
       _manualWeightControllers[type] =
           TextEditingController(text: _weightTextFor(type));
+      _wasteSectionKeys[type] = GlobalKey();
     }
   }
 
@@ -610,6 +782,7 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
         for (var item in wasteTypes)
           item['waste_type_name'].toString().trim().toLowerCase(): {
             'waste_type_id': item['id'],
+            'label': item['waste_type_name'],
             'unique_id': null,
             'image': null,
             'weight': '--',
@@ -659,6 +832,9 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
         ..fields['screen_unique_id'] = screenUniqueId
         ..fields['customer_id'] = widget.customerId
         ..fields['entry_type'] = 'app'
+        // Scope the collection to this trip so the backend marks the correct
+        // household stop collected (a driver may have a bin + a household trip).
+        ..fields['assignment_id'] = widget.assignmentId ?? ''
         ..fields['total_waste_collected'] = totalWeight.toString();
 
       final response = await request.send();
@@ -991,16 +1167,32 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
     );
   }
 
-  Widget _buildCollectionHeader({
-    required int addedCount,
-    required double totalWeight,
-  }) {
+  Widget _buildCollectionHeader() {
+    final dateLabel = _collectionDateLabel.isNotEmpty
+        ? _collectionDateLabel
+        : DateFormat('dd MMM yyyy').format(_sessionStartedAt);
+    final timeLabel = _scheduledCollectionTime.isNotEmpty
+        ? _scheduledCollectionTime
+        : DateFormat('hh:mm a').format(_sessionStartedAt);
+    final phone = _customerPhone.isNotEmpty ? _customerPhone : widget.contactNo;
+    final details = <Widget>[
+      _detailPill(Icons.phone_outlined, 'Phone', phone),
+      _detailPill(Icons.calendar_today_outlined, 'Date', dateLabel),
+      _detailPill(Icons.schedule_outlined, 'Time', timeLabel),
+      if (_collectionArea.isNotEmpty)
+        _detailPill(Icons.location_city_outlined, 'Panchayat', _collectionArea),
+      if (_assignmentLabel.isNotEmpty)
+        _detailPill(Icons.assignment_outlined, 'Assignment', _assignmentLabel),
+      _detailPill(Icons.badge_outlined, 'Customer ID', widget.customerId),
+    ];
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: CaptainTheme.headerGradient,
+        color: CaptainTheme.surface,
         borderRadius: CaptainTheme.cardRadius,
+        border: Border.all(color: CaptainTheme.hairline),
         boxShadow: CaptainTheme.softShadow,
       ),
       child: Column(
@@ -1012,13 +1204,14 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.18),
-                  ),
+                  color: CaptainTheme.accentSoft,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.scale, color: Colors.white),
+                child: Icon(
+                  Icons.home_work_outlined,
+                  color: CaptainTheme.accent,
+                  size: 22,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1026,83 +1219,81 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Live Weight',
-                      style: AppTextStyles.bodyMedium.copyWith(
-                        color: Colors.white.withValues(alpha: 0.76),
-                        fontWeight: FontWeight.w700,
+                      widget.customerName.trim().isEmpty
+                          ? 'Scanned household'
+                          : widget.customerName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.heading2.copyWith(
+                        color: CaptainTheme.strongText,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      latestWeight == '--' ? '-- kg' : '$latestWeight kg',
-                      style: AppTextStyles.heading2.copyWith(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w900,
+                      _loadingContextDetails
+                          ? 'Loading assignment details...'
+                          : 'Household collection details',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        color: CaptainTheme.mutedText,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ],
                 ),
               ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.12),
-                  borderRadius: CaptainTheme.chipRadius,
-                ),
-                child: Text(
-                  '$addedCount/${wasteTypes.length} added',
-                  style: AppTextStyles.bodyMedium.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 14),
-          _buildBluetoothBar(inverted: true),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _headerMetric(
-                  icon: Icons.person_pin_circle_outlined,
-                  label: 'Customer',
-                  value: widget.customerId.isEmpty ? '-' : widget.customerId,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _headerMetric(
-                  icon: Icons.inventory_2_outlined,
-                  label: 'Total',
-                  value: '${totalWeight.toStringAsFixed(2)} kg',
-                ),
-              ),
-            ],
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: details,
           ),
+          if (_customerAddress.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _detailPill(
+              Icons.home_outlined,
+              'Address',
+              _customerAddress,
+              fullWidth: true,
+            ),
+          ],
+          if (_btConnecting || connected) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: CaptainTheme.surfaceMuted,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: _buildBluetoothBar(inverted: false),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _headerMetric({
-    required IconData icon,
-    required String label,
-    required String value,
+  Widget _detailPill(
+    IconData icon,
+    String label,
+    String value, {
+    bool fullWidth = false,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(12),
+    final card = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
+        color: CaptainTheme.surfaceMuted,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
       child: Row(
+        mainAxisSize: fullWidth ? MainAxisSize.max : MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 18, color: Colors.white.withValues(alpha: 0.82)),
+          Icon(icon, size: 16, color: CaptainTheme.accent),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -1110,21 +1301,19 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
               children: [
                 Text(
                   label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                   style: AppTextStyles.bodyMedium.copyWith(
-                    color: Colors.white.withValues(alpha: 0.65),
+                    color: CaptainTheme.mutedText,
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  value,
-                  maxLines: 1,
+                  value.trim().isEmpty ? '—' : value,
+                  maxLines: fullWidth ? 3 : 1,
                   overflow: TextOverflow.ellipsis,
                   style: AppTextStyles.bodyMedium.copyWith(
-                    color: Colors.white,
+                    color: CaptainTheme.strongText,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -1133,6 +1322,53 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
           ),
         ],
       ),
+    );
+
+    if (fullWidth) return SizedBox(width: double.infinity, child: card);
+    return SizedBox(width: 164, child: card);
+  }
+
+  Widget _buildWasteSectionHeader() {
+    final addedCount =
+        _wasteData.values.where((item) => item['isAdded'] == true).length;
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Waste Items',
+                style: AppTextStyles.heading2.copyWith(
+                  color: CaptainTheme.strongText,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Record weight and photo for each stream.',
+                style: AppTextStyles.bodyMedium.copyWith(
+                  color: CaptainTheme.mutedText,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: CaptainTheme.accentSoft,
+            borderRadius: CaptainTheme.chipRadius,
+          ),
+          child: Text(
+            '$addedCount/${wasteTypes.length} saved',
+            style: AppTextStyles.bodyMedium.copyWith(
+              color: CaptainTheme.accent,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1241,97 +1477,16 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
     });
   }
 
-  Widget _buildCustomerInfo() => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: CaptainTheme.surface,
-          borderRadius: CaptainTheme.cardRadius,
-          border: Border.all(color: CaptainTheme.hairline),
-          boxShadow: CaptainTheme.softShadow,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: CaptainTheme.accentSoft,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.home_work_outlined,
-                    color: CaptainTheme.accent,
-                    size: 21,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    widget.customerName.trim().isEmpty
-                        ? 'Scanned household'
-                        : widget.customerName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.heading2.copyWith(
-                      color: CaptainTheme.strongText,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            _infoTile('Customer Name', widget.customerName),
-            _infoTile('Customer ID', widget.customerId),
-            if (widget.contactNo.trim().isNotEmpty)
-              _infoTile('Contact No', widget.contactNo),
-          ],
-        ),
-      );
-
-  Widget _infoTile(String label, String value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 112,
-              child: Text(
-                label,
-                style: AppTextStyles.bodyMedium.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: CaptainTheme.mutedText,
-                ),
-              ),
-            ),
-            Expanded(
-              child: Text(
-                value.trim().isEmpty ? '-' : value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppTextStyles.bodyMedium.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: CaptainTheme.strongText,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-
   Color _wasteAccent(String type) {
-    if (type.contains('wet')) return const Color(0xFF0EA5E9);
-    if (type.contains('dry')) return CaptainTheme.warning;
-    return CaptainTheme.accent;
+    if (type.contains('wet')) return CaptainTheme.success;
+    if (type.contains('dry')) return CaptainTheme.info;
+    return CaptainTheme.warning;
   }
 
   IconData _wasteIcon(String type) {
-    if (type.contains('wet')) return Icons.water_drop_outlined;
-    if (type.contains('dry')) return Icons.inventory_2_outlined;
-    return Icons.recycling_outlined;
+    if (type.contains('wet')) return Icons.eco_outlined;
+    if (type.contains('dry')) return Icons.recycling_outlined;
+    return Icons.delete_sweep_outlined;
   }
 
   Widget _statusChip({
@@ -1363,19 +1518,73 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
     );
   }
 
-  Widget _buildWasteSection(String type, String displayName) {
+  Widget _fieldLabel(String text, {bool required = false}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          text,
+          style: AppTextStyles.bodyMedium.copyWith(
+            color: CaptainTheme.strongText,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        if (required)
+          Text(
+            ' *',
+            style: AppTextStyles.bodyMedium.copyWith(
+              color: CaptainTheme.danger,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _captureWastePhoto(
+      String type, Map<String, dynamic> item) async {
+    final picked = await _picker.pickImage(source: ImageSource.camera);
+    if (picked == null) return;
+
+    final original = File(picked.path);
+    final compressed = await ImageCompressService.compress(original);
+
+    _safeSetState(() {
+      final updated = Map<String, dynamic>.from(item);
+      updated['image'] = compressed;
+      if (_canApplyLiveWeight(type)) {
+        updated['weight'] = latestWeight;
+      }
+
+      _wasteData = {
+        ..._wasteData,
+        type: updated,
+      };
+
+      if (_canApplyLiveWeight(type)) {
+        activeType = type;
+      }
+      _syncManualWeightController(type, _weightTextFor(type));
+    });
+  }
+
+  Widget _buildWasteSection(int index, String type, String displayName) {
     final item = _wasteData[type]!;
     final image = item['image'] as File?;
     final isAdded = item['isAdded'] as bool;
     final accent = _wasteAccent(type);
     final isEditingAdded =
         isAdded && activeType == type && item['finalWeight'] == null;
+    final sectionKey = _wasteSectionKeys[type] ?? GlobalKey();
     final displayWeight =
         item['finalWeight'] != null && item['finalWeight'] != '--'
             ? item['finalWeight']
             : item['weight'];
+    final hasWeight = displayWeight != null && displayWeight != '--';
+    final quickWeights = _quickWeightsFor(type);
 
     return Container(
+      key: sectionKey,
       margin: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
         color: CaptainTheme.surface,
@@ -1386,292 +1595,365 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
         ),
         boxShadow: CaptainTheme.softShadow,
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.08),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(18),
+                topRight: Radius.circular(18),
+              ),
+            ),
+            child: Row(
               children: [
                 Container(
-                  width: 38,
-                  height: 38,
+                  width: 28,
+                  height: 28,
                   decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.11),
-                    borderRadius: BorderRadius.circular(12),
+                    color: accent,
+                    shape: BoxShape.circle,
                   ),
-                  child: Icon(_wasteIcon(type), color: accent, size: 21),
+                  alignment: Alignment.center,
+                  child: Text(
+                    '${index + 1}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 10),
+                Icon(_wasteIcon(type), size: 20, color: accent),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppTextStyles.heading2.copyWith(
-                          color: CaptainTheme.strongText,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        image == null ? 'Photo required' : 'Photo captured',
-                        style: AppTextStyles.bodyMedium.copyWith(
-                          color: CaptainTheme.mutedText,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.heading2.copyWith(
+                      color: accent,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
+                if (image != null)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '1 Photo',
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        color: accent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: 8),
                 _statusChip(
                   icon: isAdded ? Icons.check_circle : Icons.schedule,
-                  label: isAdded ? 'Added' : 'Pending',
+                  label: isAdded ? 'Saved' : 'Pending',
                   color: isAdded ? CaptainTheme.success : CaptainTheme.warning,
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            if (image != null)
-              GestureDetector(
-                onTap: () => _showPreview(image),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: Stack(
-                    children: [
-                      Image.file(
-                        image,
-                        width: double.infinity,
-                        height: 154,
-                        fit: BoxFit.cover,
-                      ),
-                      Positioned(
-                        right: 10,
-                        bottom: 10,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 9, vertical: 6),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final photoSize =
+                        constraints.maxWidth < 390 ? 112.0 : 124.0;
+                    final weightPanel = Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _fieldLabel('Weight (kg)', required: true),
+                        const SizedBox(height: 8),
+                        Container(
+                          height: 54,
                           decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.58),
-                            borderRadius: CaptainTheme.chipRadius,
+                            color: CaptainTheme.surface,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: CaptainTheme.hairline),
                           ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
+                          child: Row(
                             children: [
-                              Icon(Icons.visibility_outlined,
-                                  size: 14, color: Colors.white),
-                              SizedBox(width: 5),
-                              Text(
-                                'Preview',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
+                              Expanded(
+                                child: TextField(
+                                  controller: _manualWeightControllers[type],
+                                  cursorColor: CaptainTheme.accent,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.allow(
+                                      RegExp(r'^\d*\.?\d{0,2}$'),
+                                    ),
+                                  ],
+                                  style: AppTextStyles.heading2.copyWith(
+                                    color: CaptainTheme.strongText,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                  decoration: InputDecoration(
+                                    hintText: '0.00',
+                                    filled: true,
+                                    fillColor: CaptainTheme.surface,
+                                    enabledBorder: InputBorder.none,
+                                    focusedBorder: InputBorder.none,
+                                    border: InputBorder.none,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 14,
+                                    ),
+                                    hintStyle: AppTextStyles.heading2.copyWith(
+                                      color: CaptainTheme.mutedText,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  onChanged: (value) => setState(
+                                    () => _updateManualWeight(type, value),
+                                  ),
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  right: 14,
+                                  left: 8,
+                                ),
+                                child: Text(
+                                  'kg',
+                                  style: AppTextStyles.bodyMedium.copyWith(
+                                    color: CaptainTheme.mutedText,
+                                    fontWeight: FontWeight.w800,
+                                  ),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                      ),
-                    ],
-                  ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            for (final quickWeight in quickWeights)
+                              OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: accent,
+                                  side: BorderSide(
+                                    color: accent.withValues(alpha: 0.3),
+                                  ),
+                                  backgroundColor:
+                                      accent.withValues(alpha: 0.04),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  minimumSize: const Size(0, 38),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                ),
+                                onPressed: () =>
+                                    _setQuickWeight(type, quickWeight),
+                                child: Text(
+                                    '${_formatQuickWeight(quickWeight)} kg'),
+                              ),
+                            OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: accent,
+                                side: BorderSide(
+                                  color: accent.withValues(alpha: 0.3),
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                minimumSize: const Size(0, 38),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                              ),
+                              onPressed: () {},
+                              child: const Text('Other'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.monitor_weight_outlined,
+                              size: 16,
+                              color: accent,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                hasWeight
+                                    ? '$displayWeight kg ready'
+                                    : 'Weight not set yet',
+                                style: AppTextStyles.bodyMedium.copyWith(
+                                  color: CaptainTheme.strongText,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    );
+                    final imagePanel = Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _fieldLabel('Capture Image', required: true),
+                        const SizedBox(height: 8),
+                        InkWell(
+                          onTap: () => image != null
+                              ? _showPreview(image)
+                              : _captureWastePhoto(type, item),
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            width: photoSize,
+                            height: photoSize,
+                            decoration: BoxDecoration(
+                              color: CaptainTheme.surfaceMuted,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: accent.withValues(alpha: 0.28),
+                              ),
+                              image: image != null
+                                  ? DecorationImage(
+                                      image: FileImage(image),
+                                      fit: BoxFit.cover,
+                                    )
+                                  : null,
+                            ),
+                            child: image == null
+                                ? Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.camera_alt_outlined,
+                                        size: 28,
+                                        color: accent,
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'Add Photo',
+                                        style:
+                                            AppTextStyles.bodyMedium.copyWith(
+                                          color: accent,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : Container(
+                                    alignment: Alignment.bottomCenter,
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(14),
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        colors: [
+                                          Colors.transparent,
+                                          Colors.black.withValues(alpha: 0.45),
+                                        ],
+                                      ),
+                                    ),
+                                    child: Text(
+                                      'View / Retake',
+                                      style: AppTextStyles.bodyMedium.copyWith(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ],
+                    );
+
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: weightPanel),
+                        const SizedBox(width: 12),
+                        SizedBox(width: photoSize, child: imagePanel),
+                      ],
+                    );
+                  },
                 ),
-              )
-            else
-              Container(
-                height: 132,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: CaptainTheme.surfaceMuted,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: CaptainTheme.hairline,
-                    style: BorderStyle.solid,
-                  ),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                const SizedBox(height: 12),
+                Row(
                   children: [
-                    Icon(Icons.camera_alt_outlined,
-                        size: 34, color: CaptainTheme.mutedText),
-                    const SizedBox(height: 8),
                     Text(
-                      'Capture waste photo',
+                      isAdded ? 'Saved for submit' : 'Not saved yet',
                       style: AppTextStyles.bodyMedium.copyWith(
-                        color: CaptainTheme.mutedText,
+                        color: isAdded
+                            ? CaptainTheme.success
+                            : CaptainTheme.mutedText,
                         fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const Spacer(),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isAdded
+                              ? CaptainTheme.warning
+                              : CaptainTheme.accent,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        onPressed: () {
+                          if (isAdded && !isEditingAdded) {
+                            setState(() => _startEditingAddedWeight(type));
+                            return;
+                          }
+                          _handleAdd(type);
+                        },
+                        icon: Icon(
+                          isAdded
+                              ? (isEditingAdded ? Icons.save : Icons.refresh)
+                              : Icons.add,
+                          size: 18,
+                        ),
+                        label: Text(
+                          isAdded
+                              ? (isEditingAdded ? 'Save changes' : 'Edit item')
+                              : 'Save item',
+                          style: AppTextStyles.labelLarge.copyWith(
+                            fontSize: 13,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: CaptainTheme.surfaceMuted,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Icon(Icons.monitor_weight_outlined,
-                            size: 19, color: accent),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            displayWeight == '--'
-                                ? 'Weight not set'
-                                : '$displayWeight kg',
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTextStyles.bodyMedium.copyWith(
-                              color: CaptainTheme.strongText,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  SizedBox(
-                    width: 104,
-                    height: 40,
-                    child: TextField(
-                      controller: _manualWeightControllers[type],
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                          RegExp(r'^\d*\.?\d{0,2}$'),
-                        ),
-                      ],
-                      decoration: InputDecoration(
-                        hintText: 'kg',
-                        isDense: true,
-                        filled: true,
-                        fillColor: CaptainTheme.surface,
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 10),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: CaptainTheme.hairline),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: CaptainTheme.hairline),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: accent, width: 1.4),
-                        ),
-                      ),
-                      onChanged: (value) => setState(
-                        () => _updateManualWeight(type, value),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: CaptainTheme.primary,
-                      side: BorderSide(color: CaptainTheme.hairline),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    onPressed: () async {
-                      final picked =
-                          await _picker.pickImage(source: ImageSource.camera);
-                      if (picked == null) return;
-
-                      final original = File(picked.path);
-                      final compressed =
-                          await ImageCompressService.compress(original);
-
-                      _safeSetState(() {
-                        final updated = Map<String, dynamic>.from(item);
-                        updated['image'] = compressed;
-                        if (_canApplyLiveWeight(type)) {
-                          updated['weight'] = latestWeight;
-                        }
-
-                        _wasteData = {
-                          ..._wasteData,
-                          type: updated,
-                        };
-
-                        if (_canApplyLiveWeight(type)) {
-                          activeType = type;
-                        }
-                        _syncManualWeightController(
-                          type,
-                          _weightTextFor(type),
-                        );
-                      });
-                    },
-                    icon: const Icon(Icons.camera_alt_outlined, size: 18),
-                    label: Text(
-                      image == null ? "Capture" : "Retake",
-                      style: AppTextStyles.bodyMedium.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor:
-                          isAdded ? CaptainTheme.warning : CaptainTheme.accent,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    onPressed: () {
-                      if (isAdded && !isEditingAdded) {
-                        setState(() => _startEditingAddedWeight(type));
-                        return;
-                      }
-                      _handleAdd(type);
-                    },
-                    icon: Icon(
-                      isAdded
-                          ? (isEditingAdded ? Icons.save : Icons.refresh)
-                          : Icons.add,
-                      size: 18,
-                    ),
-                    label: Text(
-                      isAdded ? (isEditingAdded ? "Save" : "Update") : "Add",
-                      style: AppTextStyles.labelLarge.copyWith(
-                        fontSize: 13,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
               ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -1733,31 +2015,14 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
           children: [
             Expanded(
               child: SingleChildScrollView(
+                controller: _scrollController,
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildCollectionHeader(
-                      addedCount: addedCount,
-                      totalWeight: totalWeight,
-                    ),
-                    const SizedBox(height: 14),
-                    _buildCustomerInfo(),
+                    _buildCollectionHeader(),
                     const SizedBox(height: 18),
-                    Text(
-                      'Waste entries',
-                      style: AppTextStyles.heading2.copyWith(
-                        color: CaptainTheme.strongText,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Capture photo, confirm weight, then add each waste type.',
-                      style: AppTextStyles.bodyMedium.copyWith(
-                        color: CaptainTheme.mutedText,
-                      ),
-                    ),
+                    _buildWasteSectionHeader(),
                     const SizedBox(height: 10),
                     if (wasteTypes.isEmpty)
                       Container(
@@ -1786,9 +2051,105 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
                         final name = w['waste_type_name'].toString();
                         return KeyedSubtree(
                           key: ValueKey("wastecard_${index}_$type"),
-                          child: _buildWasteSection(type, name),
+                          child: _buildWasteSection(index, type, name),
                         );
                       }),
+                    const SizedBox(height: 6),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: CaptainTheme.surface,
+                        borderRadius: CaptainTheme.cardRadius,
+                        border: Border.all(color: CaptainTheme.hairline),
+                        boxShadow: CaptainTheme.softShadow,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: CaptainTheme.success
+                                        .withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    Icons.list_alt_rounded,
+                                    color: CaptainTheme.success,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Total items',
+                                      style: AppTextStyles.bodyMedium.copyWith(
+                                        color: CaptainTheme.mutedText,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    Text(
+                                      '$addedCount',
+                                      style: AppTextStyles.heading2.copyWith(
+                                        color: CaptainTheme.strongText,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: CaptainTheme.accent
+                                        .withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    Icons.scale_rounded,
+                                    color: CaptainTheme.accent,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Total weight',
+                                      style: AppTextStyles.bodyMedium.copyWith(
+                                        color: CaptainTheme.mutedText,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${totalWeight.toStringAsFixed(2)} kg',
+                                      style: AppTextStyles.heading2.copyWith(
+                                        color: CaptainTheme.strongText,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),

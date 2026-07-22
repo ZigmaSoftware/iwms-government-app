@@ -121,6 +121,16 @@ class _SupervisorShellState extends State<_SupervisorShell> {
     return 'Supervisor';
   }
 
+  /// Supervisor's staff unique id (STC-...), used to fetch the registered
+  /// attendance face for the header avatar.
+  String? _identityEmpId() {
+    final state = context.read<AuthBloc>().state;
+    if (state is AuthStateAuthenticated) {
+      return state.emp_id;
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final name = _identityName();
@@ -193,10 +203,12 @@ class _SupervisorShellState extends State<_SupervisorShell> {
   }
 
   Widget _buildTab(String name) {
+    final empId = _identityEmpId();
     switch (_activeTab) {
       case SupervisorNavTab.dashboard:
         return SupervisorHomePage(
           name: name,
+          empId: empId,
           onLogout: _logout,
           onOpenTrips: () => _setTab(SupervisorNavTab.trips),
           onOpenAssignments: _openAssignments,
@@ -209,6 +221,7 @@ class _SupervisorShellState extends State<_SupervisorShell> {
       case SupervisorNavTab.profile:
         return SupervisorProfileScreen(
           name: name,
+          empId: empId,
           onLogout: _logout,
         );
     }

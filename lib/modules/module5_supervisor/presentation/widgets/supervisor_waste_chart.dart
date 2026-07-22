@@ -33,7 +33,7 @@ class _SupervisorWasteChartState extends State<SupervisorWasteChart> {
 
   WasteRange _range = WasteRange.day;
   int? _selected; // selected bucket index (for the header detail)
-  bool _wave = false; // false = bar view, true = double-layered wave view
+  bool _wave = true; // false = bar view, true = double-layered wave view
 
   static const double _plotHeight = 150;
   static const double _slot = 46; // per-bar horizontal slot

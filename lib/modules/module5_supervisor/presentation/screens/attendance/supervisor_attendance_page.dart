@@ -72,9 +72,14 @@ class _SupervisorAttendancePageState extends State<SupervisorAttendancePage>
   int _permDays = 0;
   bool _recordsLoading = false;
   List<Map<String, dynamic>> _records = [];
+  bool _hasRegisteredFace = false;
   late String _time;
   late String _date;
   Timer? _clockTimer;
+  Timer? _workedSyncTimer;
+  Duration _worked = Duration.zero;
+  DateTime? _checkInAt;
+  DateTime? _checkOutAt;
   late final AnimationController _pulse;
 
   @override
@@ -95,12 +100,14 @@ class _SupervisorAttendancePageState extends State<SupervisorAttendancePage>
       _loadStatus();
       _loadSummary();
       _loadRecords();
+      _loadProfile();
     });
   }
 
   @override
   void dispose() {
     _clockTimer?.cancel();
+    _workedSyncTimer?.cancel();
     _pulse.dispose();
     super.dispose();
   }
@@ -109,7 +116,39 @@ class _SupervisorAttendancePageState extends State<SupervisorAttendancePage>
     final now = DateTime.now();
     _time = DateFormat('hh:mm a').format(now);
     _date = DateFormat('EEE, dd MMM yyyy').format(now);
+    _recomputeWorked(now);
     if (mounted) setState(() {});
+  }
+
+  String _fmtDur(Duration d) => '${d.inHours.toString().padLeft(2, '0')}:'
+      '${(d.inMinutes % 60).toString().padLeft(2, '0')}:'
+      '${(d.inSeconds % 60).toString().padLeft(2, '0')}';
+
+  DateTime? _parseApiDateTime(dynamic raw) {
+    final text = raw?.toString().trim() ?? '';
+    if (text.isEmpty || text == 'null') return null;
+    return DateTime.tryParse(text)?.toLocal();
+  }
+
+  void _recomputeWorked([DateTime? now]) {
+    final start = _checkInAt;
+    if (start == null) {
+      _worked = Duration.zero;
+      return;
+    }
+    final effectiveNow = now ?? DateTime.now();
+    final end = _checkOutAt ?? effectiveNow;
+    _worked = end.isAfter(start) ? end.difference(start) : Duration.zero;
+  }
+
+  void _configureWorkedSyncTimer() {
+    _workedSyncTimer?.cancel();
+    if (_isCheckedIn && !_isCheckedOut) {
+      _workedSyncTimer = Timer.periodic(
+        const Duration(minutes: 1),
+        (_) => _loadStatus(),
+      );
+    }
   }
 
   String? _staffId() {
@@ -131,19 +170,31 @@ class _SupervisorAttendancePageState extends State<SupervisorAttendancePage>
     try {
       final dio = await authorizedDio();
       final res = await dio.get(
-        '${ApiConfig.desktopBase}attendance-list/today/',
+        '${ApiConfig.attendanceBase}daily-attendance/today/',
         queryParameters: {'emp_id': id},
       );
 
       final data = res.data;
       if (data is Map && data['status'] == 'success' && mounted) {
+        final checkInAt = _parseApiDateTime(data['check_in_at']);
+        final checkOutAt = _parseApiDateTime(data['check_out_at']);
+        final workedSeconds = switch (data['worked_seconds']) {
+          int value => value,
+          num value => value.toInt(),
+          _ => 0,
+        };
         setState(() {
           _checkIn = (data['check_in_time'] ?? '--:--').toString();
           _checkOut = (data['check_out_time'] ?? '--:--').toString();
           _isCheckedIn = data['checked_in'] == true;
           _isCheckedOut = data['checked_out'] == true;
+          _checkInAt = checkInAt;
+          _checkOutAt = checkOutAt;
+          _worked = Duration(seconds: workedSeconds);
+          _recomputeWorked();
           _isStatusLoading = false;
         });
+        _configureWorkedSyncTimer();
         return;
       }
     } catch (_) {}
@@ -159,7 +210,7 @@ class _SupervisorAttendancePageState extends State<SupervisorAttendancePage>
       final now = DateTime.now();
       final dio = await authorizedDio();
       final res = await dio.get(
-        '${ApiConfig.desktopBase}attendance-list/summary/',
+        '${ApiConfig.attendanceBase}daily-attendance/summary/',
         queryParameters: {
           'emp_id': id,
           'month': now.month,
@@ -189,7 +240,7 @@ class _SupervisorAttendancePageState extends State<SupervisorAttendancePage>
       final now = DateTime.now();
       final dio = await authorizedDio();
       final res = await dio.get(
-        '${ApiConfig.desktopBase}attendance-list/',
+        '${ApiConfig.attendanceBase}daily-attendance/',
         queryParameters: {
           'emp_id': id,
           'month': now.month,
@@ -212,6 +263,28 @@ class _SupervisorAttendancePageState extends State<SupervisorAttendancePage>
       }
     } catch (_) {}
     if (mounted) setState(() => _recordsLoading = false);
+  }
+
+  Future<void> _loadProfile() async {
+    final id = _staffId();
+    if (id == null) return;
+
+    try {
+      final dio = await authorizedDio();
+      final res = await dio.get(
+        '${ApiConfig.attendanceBase}staff-profile/',
+        queryParameters: {'staff_id_id': id},
+      );
+      final data = res.data;
+      if (data is Map && data['status'] == 'success' && mounted) {
+        final profile = data['data'] as Map?;
+        final registered =
+            profile?['attendance_reg_image']?.toString().trim() ?? '';
+        setState(() {
+          _hasRegisteredFace = registered.isNotEmpty;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _fetchLocation() async {
@@ -282,6 +355,7 @@ class _SupervisorAttendancePageState extends State<SupervisorAttendancePage>
       ),
     );
     if (registered == true && mounted) {
+      setState(() => _hasRegisteredFace = true);
       _snack('Face registered — you can now punch attendance.');
     }
   }
@@ -384,6 +458,7 @@ class _SupervisorAttendancePageState extends State<SupervisorAttendancePage>
                   isLoading: _isStatusLoading,
                   checkIn: _checkIn,
                   checkOut: _checkOut,
+                  worked: _fmtDur(_worked),
                 ),
                 const SizedBox(height: 14),
                 _GlassPunchCard(
@@ -404,6 +479,7 @@ class _SupervisorAttendancePageState extends State<SupervisorAttendancePage>
                   hasLoc: _hasLoc,
                   lat: _lat,
                   lng: _lng,
+                  showRegister: !_hasRegisteredFace,
                   onRegister: () =>
                       _registerFace(name: displayName, id: employeeId),
                   onHistory: () => _openHistory(employeeId),
@@ -760,6 +836,7 @@ class _StatusStrip extends StatelessWidget {
     required this.isLoading,
     required this.checkIn,
     required this.checkOut,
+    required this.worked,
   });
 
   final IconData icon;
@@ -767,6 +844,7 @@ class _StatusStrip extends StatelessWidget {
   final bool isLoading;
   final String checkIn;
   final String checkOut;
+  final String worked;
 
   @override
   Widget build(BuildContext context) {
@@ -820,6 +898,12 @@ class _StatusStrip extends StatelessWidget {
                 label: 'Check Out',
                 value: checkOut,
                 color: _kAmber,
+              ),
+              _vline(),
+              _TimeCell(
+                label: 'Worked',
+                value: worked,
+                color: _kTextPri,
               ),
             ],
           ),
@@ -1085,6 +1169,7 @@ class _SummaryCard extends StatelessWidget {
     required this.hasLoc,
     required this.lat,
     required this.lng,
+    required this.showRegister,
     required this.onRegister,
     required this.onHistory,
   });
@@ -1095,6 +1180,7 @@ class _SummaryCard extends StatelessWidget {
   final bool hasLoc;
   final String lat;
   final String lng;
+  final bool showRegister;
   final VoidCallback onRegister;
   final VoidCallback onHistory;
 
@@ -1162,15 +1248,17 @@ class _SummaryCard extends StatelessWidget {
           const SizedBox(height: 14),
           Row(
             children: [
-              Expanded(
-                child: _ActionBtn(
-                  title: 'Register Face',
-                  icon: Icons.face_retouching_natural_rounded,
-                  filled: true,
-                  onTap: onRegister,
+              if (showRegister) ...[
+                Expanded(
+                  child: _ActionBtn(
+                    title: 'Register Face',
+                    icon: Icons.face_retouching_natural_rounded,
+                    filled: true,
+                    onTap: onRegister,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
+                const SizedBox(width: 10),
+              ],
               Expanded(
                 child: _ActionBtn(
                   title: 'History',

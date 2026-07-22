@@ -105,10 +105,13 @@ class _AttendancePageDriverState extends State<AttendancePageDriver>
   late String _time;
   late String _date;
   Timer? _clockTimer;
+  Timer? _workedSyncTimer;
   Timer? _tripCooldownTimer;
   StreamSubscription? _connectivitySub;
   bool _isOnline = true;
   Duration _worked = Duration.zero;
+  DateTime? _checkInAt;
+  DateTime? _checkOutAt;
   List<Map<String, dynamic>> _pendingSync = [];
   bool _tripWindow = false;
   late VoidCallback _blinkCb;
@@ -155,6 +158,7 @@ class _AttendancePageDriverState extends State<AttendancePageDriver>
   @override
   void dispose() {
     _clockTimer?.cancel();
+    _workedSyncTimer?.cancel();
     _tripCooldownTimer?.cancel();
     _connectivitySub?.cancel();
     AttendanceBlinkStore.windowNotifier.removeListener(_blinkCb);
@@ -166,11 +170,40 @@ class _AttendancePageDriverState extends State<AttendancePageDriver>
     final now = DateTime.now();
     _time = DateFormat('hh:mm a').format(now);
     _date = DateFormat('EEE, dd MMM yyyy').format(now);
+    _recomputeWorked(now);
     if (mounted) setState(() {});
   }
 
-  String _fmtDur(Duration d) =>
-      '${d.inHours.toString().padLeft(2, '0')}:${(d.inMinutes % 60).toString().padLeft(2, '0')}';
+  String _fmtDur(Duration d) => '${d.inHours.toString().padLeft(2, '0')}:'
+      '${(d.inMinutes % 60).toString().padLeft(2, '0')}:'
+      '${(d.inSeconds % 60).toString().padLeft(2, '0')}';
+
+  DateTime? _parseApiDateTime(dynamic raw) {
+    final text = raw?.toString().trim() ?? '';
+    if (text.isEmpty || text == 'null') return null;
+    return DateTime.tryParse(text)?.toLocal();
+  }
+
+  void _recomputeWorked([DateTime? now]) {
+    final start = _checkInAt;
+    if (start == null) {
+      _worked = Duration.zero;
+      return;
+    }
+    final effectiveNow = now ?? DateTime.now();
+    final end = _checkOutAt ?? effectiveNow;
+    _worked = end.isAfter(start) ? end.difference(start) : Duration.zero;
+  }
+
+  void _configureWorkedSyncTimer() {
+    _workedSyncTimer?.cancel();
+    if (_isCheckedIn && !_isCheckedOut) {
+      _workedSyncTimer = Timer.periodic(
+        const Duration(minutes: 1),
+        (_) => _loadStatus(),
+      );
+    }
+  }
 
   bool _isCooldown() {
     if (_lastTripAt == null) return false;
@@ -219,19 +252,31 @@ class _AttendancePageDriverState extends State<AttendancePageDriver>
     try {
       final dio = await authorizedDio();
       final res = await dio.get(
-        '${ApiConfig.desktopBase}attendance-list/today/',
+        '${ApiConfig.attendanceBase}daily-attendance/today/',
         queryParameters: {'emp_id': id},
       );
 
       final data = res.data;
       if (data is Map && data['status'] == 'success' && mounted) {
+        final checkInAt = _parseApiDateTime(data['check_in_at']);
+        final checkOutAt = _parseApiDateTime(data['check_out_at']);
+        final workedSeconds = switch (data['worked_seconds']) {
+          int value => value,
+          num value => value.toInt(),
+          _ => 0,
+        };
         setState(() {
           _checkIn = (data['check_in_time'] ?? '--:--').toString();
           _checkOut = (data['check_out_time'] ?? '--:--').toString();
           _isCheckedIn = data['checked_in'] == true;
           _isCheckedOut = data['checked_out'] == true;
+          _checkInAt = checkInAt;
+          _checkOutAt = checkOutAt;
+          _worked = Duration(seconds: workedSeconds);
+          _recomputeWorked();
           _isStatusLoading = false;
         });
+        _configureWorkedSyncTimer();
         _updateBlink();
         return;
       }
@@ -248,7 +293,7 @@ class _AttendancePageDriverState extends State<AttendancePageDriver>
       final now = DateTime.now();
       final dio = await authorizedDio();
       final res = await dio.get(
-        '${ApiConfig.desktopBase}attendance-list/summary/',
+        '${ApiConfig.attendanceBase}daily-attendance/summary/',
         queryParameters: {
           'emp_id': id,
           'month': now.month,

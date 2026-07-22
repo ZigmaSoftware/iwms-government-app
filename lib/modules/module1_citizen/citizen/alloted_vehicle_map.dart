@@ -7,6 +7,7 @@ import 'package:iwms_citizen_app/localization/app_localizations.dart';
 
 import '../../../core/di.dart';
 import '../../../core/geofence_config.dart';
+import '../../../core/ors_service.dart';
 import '../../../data/models/vehicle_model.dart';
 import '../../../logic/vehicle_tracking/vehicle_bloc.dart';
 import '../../../logic/vehicle_tracking/vehicle_event.dart';
@@ -52,6 +53,13 @@ class _CitizenAllotedVehicleMapScreenState
 
   // When camera is moving programmatically, avoid marking it as user move
   bool _programmaticCameraMove = false;
+
+  // Real road-following route (vehicle → facility) from ORS, drawn as a
+  // dotted polyline while the vehicle is inside the geofence.
+  List<LatLng> _routePoints = [];
+  LatLng? _lastRouteOrigin;
+  bool _fetchingRoute = false;
+  static const Distance _distanceCalculator = Distance();
 
   // ---------------------------------------------------------------------------
   // MAP THEMES
@@ -267,6 +275,47 @@ class _CitizenAllotedVehicleMapScreenState
     final targetZoom = currentZoom < 16.0 ? 16.0 : currentZoom;
     _moveCamera(target, targetZoom, animate: true);
   }
+
+  // ---------------------------------------------------------------------------
+  // ROAD ROUTE (vehicle -> facility) VIA ORS
+  // ---------------------------------------------------------------------------
+
+  void _clearRoute() {
+    if (_routePoints.isEmpty && _lastRouteOrigin == null) return;
+    setState(() {
+      _routePoints = [];
+      _lastRouteOrigin = null;
+    });
+  }
+
+  /// Fetches a real road-following route from the vehicle to the facility
+  /// whenever the vehicle is inside the geofence. Re-fetching is throttled
+  /// to meaningful movement so we don't hit ORS on every ~15s vehicle poll.
+  Future<void> _maybeFetchRoute(LatLng vehiclePos) async {
+    if (_fetchingRoute) return;
+
+    final lastOrigin = _lastRouteOrigin;
+    const moveThresholdMeters = 25.0;
+    if (lastOrigin != null && _routePoints.isNotEmpty) {
+      final moved =
+          _distanceCalculator.as(LengthUnit.Meter, lastOrigin, vehiclePos);
+      if (moved < moveThresholdMeters) return;
+    }
+
+    _fetchingRoute = true;
+    try {
+      final route = await ORSService.fetchRoute(vehiclePos, _gammaCenter);
+      if (!mounted) return;
+      setState(() {
+        // Fall back to a straight line if ORS is unavailable/rate-limited,
+        // so the map still shows a route instead of nothing.
+        _routePoints = route.isNotEmpty ? route : [vehiclePos, _gammaCenter];
+        _lastRouteOrigin = vehiclePos;
+      });
+    } finally {
+      _fetchingRoute = false;
+    }
+  }
   // ---------------------------------------------------------------------------
   // VEHICLE FILTERING LOGIC (unchanged behavior)
   // ---------------------------------------------------------------------------
@@ -323,6 +372,23 @@ class _CitizenAllotedVehicleMapScreenState
 
                 if (assignedVehicle == null && _showVehicleDetails) {
                   _setVehicleDetailsVisibility(false);
+                }
+
+                if (assignedVehicle != null &&
+                    GammaGeofenceConfig.contains(
+                      LatLng(
+                        assignedVehicle.latitude,
+                        assignedVehicle.longitude,
+                      ),
+                    )) {
+                  unawaited(_maybeFetchRoute(
+                    LatLng(
+                      assignedVehicle.latitude,
+                      assignedVehicle.longitude,
+                    ),
+                  ));
+                } else {
+                  _clearRoute();
                 }
               });
             },
@@ -481,22 +547,9 @@ class _CitizenAllotedVehicleMapScreenState
     final themeConfig = _mapThemes[_selectedTheme]!;
 
     // ---------------------------------------------------------------
-    // Arc markers (vehicle inside geofence)
-    // ---------------------------------------------------------------
-    final arcMarkers = <Marker>[];
-    if (vehicle != null) {
-      final vPos = LatLng(vehicle.latitude, vehicle.longitude);
-      if (GammaGeofenceConfig.contains(vPos)) {
-        arcMarkers.addAll(_buildArcMarkers(_gammaCenter, vPos));
-      }
-    }
-
-    // ---------------------------------------------------------------
     // All map markers
     // ---------------------------------------------------------------
     final markers = <Marker>[
-      ...arcMarkers,
-
       // Assigned vehicle
       if (vehicle != null)
         Marker(
@@ -577,6 +630,20 @@ class _CitizenAllotedVehicleMapScreenState
             ),
           ],
         ),
+
+        // Real road route from the vehicle to the facility (ORS), drawn
+        // dotted since the vehicle hasn't arrived yet.
+        if (_routePoints.length >= 2)
+          PolylineLayer(
+            polylines: [
+              Polyline(
+                points: _routePoints,
+                color: const Color(0xFF1E3A85),
+                strokeWidth: 4.0,
+                pattern: StrokePattern.dotted(spacingFactor: 2.2),
+              ),
+            ],
+          ),
 
         // Markers
         if (markers.isNotEmpty) MarkerLayer(markers: markers),
@@ -901,72 +968,6 @@ class _CitizenAllotedVehicleMapScreenState
     return const HomeBaseMarker(size: 22); // Reduced
   }
 
-  // ---------------------------------------------------------------------------
-  // ARC MARKERS (SAME LOGIC)
-  // ---------------------------------------------------------------------------
-
-  Iterable<Marker> _buildArcMarkers(LatLng start, LatLng end) sync* {
-    final arcPoints = _generateArcPoints(start, end);
-
-    for (var i = 1; i < arcPoints.length - 1; i += 2) {
-      yield Marker(
-        width: 10,
-        height: 10,
-        point: arcPoints[i],
-        child: Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.white.withValues(alpha: 0.85),
-            border: Border.all(
-              color: const Color(0xFF1E3A85).withValues(alpha: 0.7),
-              width: 1,
-            ),
-          ),
-        ),
-      );
-    }
-  }
-  // ---------------------------------------------------------------------------
-  // ARC PATH GENERATOR
-  // ---------------------------------------------------------------------------
-
-  List<LatLng> _generateArcPoints(
-    LatLng start,
-    LatLng end, {
-    int segments = 20,
-    double curveStrength = 0.003,
-  }) {
-    final midLat = (start.latitude + end.latitude) / 2;
-    final midLng = (start.longitude + end.longitude) / 2;
-
-    final dx = end.longitude - start.longitude;
-    final dy = end.latitude - start.latitude;
-
-    // Control point for gentle curve
-    final control = LatLng(
-      midLat - dy * curveStrength,
-      midLng + dx * curveStrength,
-    );
-
-    final pts = <LatLng>[];
-
-    for (var i = 0; i <= segments; i++) {
-      final t = i / segments;
-      final invT = 1 - t;
-
-      final lat = invT * invT * start.latitude +
-          2 * invT * t * control.latitude +
-          t * t * end.latitude;
-
-      final lng = invT * invT * start.longitude +
-          2 * invT * t * control.longitude +
-          t * t * end.longitude;
-
-      pts.add(LatLng(lat, lng));
-    }
-
-    return pts;
-  }
 }
 
 // ============================================================================

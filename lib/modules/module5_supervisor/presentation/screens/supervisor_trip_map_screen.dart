@@ -90,6 +90,10 @@ class _SupervisorTripMapScreenState extends State<SupervisorTripMapScreen> {
         _parseTracking(tracking.data);
       } catch (_) {}
 
+      if (_vehicle == null && widget.vehicleNo.trim().isNotEmpty) {
+        _vehicle = await _loadLiveVehiclePoint(dio);
+      }
+
       if (!mounted) return;
       setState(() => _loading = false);
       WidgetsBinding.instance.addPostFrameCallback((_) => _fit());
@@ -111,12 +115,26 @@ class _SupervisorTripMapScreenState extends State<SupervisorTripMapScreen> {
       for (final r in results) {
         if (r is! Map) continue;
         final cp = r['collection_point'];
-        final lat = _toD(cp is Map ? cp['latitude'] : null);
-        final lng = _toD(cp is Map ? cp['longitude'] : null);
+        final customer = r['customer'];
+        final lat = _toD(cp is Map
+            ? cp['latitude']
+            : customer is Map
+                ? customer['latitude']
+                : null);
+        final lng = _toD(cp is Map
+            ? cp['longitude']
+            : customer is Map
+                ? customer['longitude']
+                : null);
         if (lat == null || lng == null) continue;
+        final stopName = cp is Map
+            ? cp['cp_name']?.toString()
+            : customer is Map
+                ? customer['customer_name']?.toString()
+                : null;
         stops.add(_TripStop(
           point: LatLng(lat, lng),
-          name: (cp is Map ? cp['cp_name'] : null)?.toString() ?? 'Stop',
+          name: stopName ?? 'Stop',
           sequence: (r['sequence'] is num) ? (r['sequence'] as num).toInt() : 0,
           collected: r['is_collected'] == true ||
               (r['status']?.toString().toUpperCase() == 'COLLECTED'),
@@ -144,6 +162,31 @@ class _SupervisorTripMapScreenState extends State<SupervisorTripMapScreen> {
     _completed = (summary is Map && summary['completed'] is num)
         ? (summary['completed'] as num).toInt()
         : stops.where((s) => s.collected).length;
+  }
+
+  Future<LatLng?> _loadLiveVehiclePoint(dynamic dio) async {
+    try {
+      final response = await dio.get(ApiConfig.vehicleLiveApi);
+      final raw = response.data;
+      final list = raw is List ? raw : const [];
+      for (final item in list) {
+        if (item is! Map) continue;
+        final vehicleNo = item['vehicle_no']?.toString() ??
+            item['VEHICLE_NO']?.toString() ??
+            item['regNo']?.toString();
+        if ((vehicleNo ?? '').trim().toLowerCase() !=
+            widget.vehicleNo.trim().toLowerCase()) {
+          continue;
+        }
+        final lat = _toD(item['lat'] ?? item['LAT'] ?? item['latitude']);
+        final lng = _toD(item['lng'] ?? item['LON'] ?? item['longitude']);
+        if (lat == null || lng == null || lat == 0 || lng == 0) {
+          return null;
+        }
+        return LatLng(lat, lng);
+      }
+    } catch (_) {}
+    return null;
   }
 
   /// GeoJSON coords are [lng, lat]; handle LineString, Feature, and

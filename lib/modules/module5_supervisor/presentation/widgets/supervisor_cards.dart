@@ -598,11 +598,13 @@ class SupervisorGlassActionTile extends StatefulWidget {
     super.key,
     required this.iconAsset,
     required this.label,
+    this.badgeLabel,
     this.onTap,
   });
 
   final String iconAsset;
   final String label;
+  final String? badgeLabel;
   final VoidCallback? onTap;
 
   @override
@@ -696,6 +698,31 @@ class _SupervisorGlassActionTileState extends State<SupervisorGlassActionTile>
                                 ),
                               ),
                               child!,
+                              if (widget.badgeLabel != null &&
+                                  widget.badgeLabel!.trim().isNotEmpty)
+                                Positioned(
+                                  top: 10,
+                                  right: 10,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 7,
+                                      vertical: 3,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: SupervisorTheme.accent,
+                                      borderRadius: BorderRadius.circular(999),
+                                      boxShadow: SupervisorTheme.softShadow,
+                                    ),
+                                    child: Text(
+                                      widget.badgeLabel!,
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
                         ),

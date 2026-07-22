@@ -48,6 +48,12 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Route background/terminated FCM notifications to the same channel
+             the app already uses for local notifications (NotificationService). -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="iwms_default_channel" />
     </application>
     <queries>
         <intent>

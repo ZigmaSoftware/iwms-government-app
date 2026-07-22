@@ -24,6 +24,9 @@ Dio createDioClient() {
 class ApiConfig {
   /// Desktop endpoints (open lists) used for driver-side data pulls.
   static const String desktopBase = kDesktopBase;
+  // Attendance module (face registration/recognition, daily register,
+  // staff profile) was moved under this prefix on the government backend.
+  static const String attendanceBase = '${desktopBase}attendance/';
   static const bool legacyRoleAssignEnabled = false;
   static const bool legacyTripAssignEnabled = false;
   static const String wasteSummaryEndpoint =
@@ -35,6 +38,8 @@ class ApiConfig {
       '${desktopBase}waste/mark-household-status/';
   static const String customerList =
       '${desktopBase}customer-masters/customercreations/';
+  static const String registerFcmToken =
+      '${desktopBase}customer-masters/customercreations/register-fcm-token/';
 
   // --- Grievance / complaint: citizen mobile (self-scoped, auth-only) ---
   // Government backend exposes the citizen complaint API under `citizen/complaint-tickets/`
@@ -92,6 +97,10 @@ class ApiConfig {
   // Operator-mobile flow
   static const String operatorMyTripToday =
       '${desktopBase}operator-mobile/my-trip-today/';
+  // All of the operator's trips today (bin + household + bulk) for the header
+  // carousel.
+  static const String operatorMyTripsToday =
+      '${desktopBase}operator-mobile/my-trips-today/';
   static const String operatorValidateBinQr =
       '${desktopBase}operator-mobile/validate-bin-qr/';
   static const String operatorScanBin =

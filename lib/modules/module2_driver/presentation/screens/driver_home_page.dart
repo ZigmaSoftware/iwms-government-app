@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:animations/animations.dart';
+import 'package:intl/intl.dart';
+import 'package:iwms_citizen_app/core/env.dart';
 import 'package:iwms_citizen_app/core/ui/app_copy.dart';
 import 'package:iwms_citizen_app/core/ui/app_flash.dart';
 import 'package:latlong2/latlong.dart';
@@ -25,6 +27,7 @@ import 'package:iwms_citizen_app/core/ors_service.dart';
 import 'package:iwms_citizen_app/core/network/authorized_dio.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/screens/attendance/attendance_driver.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/screens/captain_home_tab.dart';
+import 'package:iwms_citizen_app/modules/module2_driver/presentation/state/collection_mode_store.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/theme/captain_theme.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/theme/driver_theme.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/captain_glass.dart';
@@ -55,6 +58,15 @@ enum _NavigationMode { overview, navigating }
 
 enum _CustomerStatus { pending, later, collected, skipped, navigating }
 
+/// Route polyline styling — a Google-Maps-style white casing around a saturated
+/// royal-blue core. The white edge keeps the line legible on dark and satellite
+/// imagery; the blue core stands out on light maps. Works across all map modes.
+const Color _kRouteCore = Color(0xFF2563EB);
+const Color _kRouteCasing = Colors.white;
+// Upcoming (not-yet-active) legs: a muted slate grey, drawn dotted. Semi-opaque
+// so it reads as "deferred" on light, dark and satellite base maps.
+const Color _kRouteUpcoming = Color(0x9964748B);
+
 class _DriverAssignmentStop {
   final String assignmentId;
   final String? wardId;
@@ -63,6 +75,9 @@ class _DriverAssignmentStop {
   final LatLng location;
   final String assignmentType;
   final String shift;
+  // Visit-order number (1..N) shared with the map markers and the home list,
+  // so the "next collection point" card reads the same sequence everywhere.
+  final int sequence;
 
   _CustomerStatus status = _CustomerStatus.pending;
   String? skipReason;
@@ -74,6 +89,7 @@ class _DriverAssignmentStop {
     required this.location,
     required this.assignmentType,
     required this.shift,
+    this.sequence = 0,
     this.customerName,
     this.status = _CustomerStatus.pending,
   });
@@ -136,6 +152,11 @@ class _DriverHomePageState extends State<DriverHomePage> {
   List<OperatorTripHistorySummary> _currentAssignments = [];
   List<OperatorTripHistorySummary> _historyAssignments = [];
   OperatorTripToday? _todayTrip;
+  // The trip whose stops the Map tab currently shows. Defaults to the primary
+  // (bin) trip, but tapping a household card in the carousel switches it to
+  // that household trip so the map plots customer locations instead of bins.
+  OperatorTripToday? _mapTrip;
+  List<OperatorTripToday> _todayTrips = [];
   OperatorTripHistoryDetail? _activeTripDetail;
   LatLng? _staticDriverLocation;
   bool _loadingCustomers = true;
@@ -150,6 +171,8 @@ class _DriverHomePageState extends State<DriverHomePage> {
     super.initState();
     // Hydrate the persisted light/dark choice before first paint settles.
     CaptainThemeStore.load();
+    // Hydrate the persisted Household/Bin collection mode.
+    CollectionModeStore.load();
     _tripRepository = getIt<OperatorTripRepository>();
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _centerOnDriver(GammaGeofenceConfig.center),
@@ -176,6 +199,88 @@ class _DriverHomePageState extends State<DriverHomePage> {
 
   void _centerOnDriver(LatLng target) {
     _mapController.move(target, 15.0);
+  }
+
+  bool _tripMatchesMode(OperatorTripToday trip, CollectionMode mode) {
+    return mode == CollectionMode.household
+        ? trip.isHousehold
+        : !trip.isHousehold;
+  }
+
+  List<OperatorTripToday> _tripsForMode(
+    CollectionMode mode, [
+    List<OperatorTripToday>? source,
+  ]) {
+    final trips = source ?? _todayTrips;
+    return trips.where((trip) => _tripMatchesMode(trip, mode)).toList();
+  }
+
+  List<OperatorTripToday> get _visibleTodayTrips =>
+      _tripsForMode(CollectionModeStore.mode.value);
+
+  OperatorTripToday? _tripById(
+    Iterable<OperatorTripToday> trips,
+    String? assignmentUniqueId,
+  ) {
+    if (assignmentUniqueId == null || assignmentUniqueId.isEmpty) return null;
+    for (final trip in trips) {
+      if (trip.assignmentUniqueId == assignmentUniqueId) return trip;
+    }
+    return null;
+  }
+
+  LatLng _anchorForVisibleTripStops(
+    List<_DriverAssignmentStop> stops,
+    List<_TripPlannedStop> tripStops,
+  ) {
+    if (tripStops.isNotEmpty) {
+      return _staticLocationNearStops(tripStops);
+    }
+    if (stops.isNotEmpty) {
+      return _staticLocationNear([for (final stop in stops) stop.location]);
+    }
+    return GammaGeofenceConfig.center;
+  }
+
+  void _applyCollectionModeState(
+    CollectionMode mode, {
+    List<OperatorTripToday>? sourceTrips,
+    String? preferredTripId,
+  }) {
+    final allTrips = sourceTrips ?? _todayTrips;
+    final visibleTrips = _tripsForMode(mode, allTrips);
+    final selectedTrip = _tripById(visibleTrips, preferredTripId) ??
+        _tripById(visibleTrips, _mapTrip?.assignmentUniqueId) ??
+        _tripById(visibleTrips, _todayTrip?.assignmentUniqueId) ??
+        (visibleTrips.isNotEmpty ? visibleTrips.first : null);
+    final detail = selectedTrip?.toHistoryDetail();
+    final (stops, tripStops) = _buildMapStopsForTrip(selectedTrip);
+
+    setState(() {
+      _todayTrip = selectedTrip;
+      _mapTrip = selectedTrip;
+      _customers = stops;
+      _tripStops = tripStops;
+      _tripPolyline = const [];
+      _activeTripId = selectedTrip?.assignmentUniqueId;
+      _activeRoutePlanId = detail?.summary.tripPlan?.uniqueId;
+      _activeVehicleType = null;
+      _activeTripDetail = detail;
+      _staticDriverLocation = _anchorForVisibleTripStops(stops, tripStops);
+      _currentAssignments = [
+        if (selectedTrip != null) selectedTrip.toHistorySummary(),
+      ];
+    });
+  }
+
+  Future<void> _onCollectionModeChanged(CollectionMode mode) async {
+    if (CollectionModeStore.mode.value == mode) return;
+    await CollectionModeStore.set(mode);
+    if (!mounted) return;
+    _applyCollectionModeState(
+      mode,
+      preferredTripId: _todayTrip?.assignmentUniqueId,
+    );
   }
 
   @override
@@ -220,13 +325,21 @@ class _DriverHomePageState extends State<DriverHomePage> {
             // flips so every mode-aware token re-resolves.
             return ValueListenableBuilder<bool>(
               valueListenable: CaptainThemeStore.isDark,
-              builder: (context, _, __) => _buildShell(
-                context,
-                driverLocation,
-                nameFromState,
-                empIdFromState,
-                employeeIdFromState,
-                selectedVehicle,
+              builder: (context, _, __) =>
+                  ValueListenableBuilder<CollectionMode>(
+                // Rebuild when the Household/Bin toggle flips, so the
+                // carousel, home list, map and scan button all switch to
+                // showing only the selected mode's trips.
+                valueListenable: CollectionModeStore.mode,
+                builder: (context, collectionMode, __) => _buildShell(
+                  context,
+                  driverLocation,
+                  nameFromState,
+                  empIdFromState,
+                  employeeIdFromState,
+                  selectedVehicle,
+                  collectionMode,
+                ),
               ),
             );
           },
@@ -242,7 +355,13 @@ class _DriverHomePageState extends State<DriverHomePage> {
     String? empIdFromState,
     String? employeeIdFromState,
     VehicleModel? selectedVehicle,
+    CollectionMode collectionMode,
   ) {
+    final showCollectionToggle =
+        _activeTab == _DriverTab.home || _activeTab == _DriverTab.map;
+    final pullInHeader =
+        _activeTab == _DriverTab.attendance || _activeTab == _DriverTab.profile;
+
     return Scaffold(
       backgroundColor: DriverTheme.background,
       extendBody: true,
@@ -258,7 +377,10 @@ class _DriverHomePageState extends State<DriverHomePage> {
               onLogout: () => _logout(context),
               onProfileTap: () =>
                   setState(() => _activeTab = _DriverTab.profile),
-              collapsed: _activeTab == _DriverTab.map,
+              collapsed: pullInHeader,
+              showCollectionModeToggle: showCollectionToggle,
+              collectionMode: collectionMode,
+              onCollectionModeChanged: _onCollectionModeChanged,
             ),
             Expanded(
               child: PageTransitionSwitcher(
@@ -348,13 +470,50 @@ class _DriverHomePageState extends State<DriverHomePage> {
       // backend resolves it against the staff template, so the operator and the
       // driver on the same template get the same DailyTripAssignment — and the
       // same collection-point rows, so collection progress is shared instantly.
-      OperatorTripToday? todayTrip;
+      // A driver can hold more than one trip today (e.g. a bin trip AND a
+      // household trip); fetch them all for the header carousel. The primary
+      // trip (drives the map + collection points below) is the first one that
+      // actually has collection points, else simply the first.
+      List<OperatorTripToday> todayTrips;
       try {
-        todayTrip = await _tripRepository.fetchMyTripToday();
+        todayTrips = await _tripRepository.fetchMyTripsToday();
       } on OperatorTripException catch (e) {
         // "No trip assigned today" is a normal empty state, not a failure.
         if (e.code != 'NO_ACTIVE_TRIP') rethrow;
-        todayTrip = null;
+        todayTrips = const [];
+      }
+      OperatorTripToday? todayTrip;
+      for (final t in todayTrips) {
+        if (t.collectionPoints.isNotEmpty) {
+          todayTrip = t;
+          break;
+        }
+      }
+      todayTrip ??= todayTrips.isNotEmpty ? todayTrips.first : null;
+
+      // Re-sequence the primary bin trip's collection points into a driver-first
+      // route order (nearest = 1) and renumber them. This ordering is the SINGLE
+      // source of truth read by both the home collection-point list and the map
+      // markers, so a stop's number is identical on both screens. Household
+      // trips keep their backend sequence.
+      if (todayTrip != null &&
+          !todayTrip.isHousehold &&
+          todayTrip.collectionPoints.isNotEmpty) {
+        final anchor = _staticLocationNear([
+          for (final cp in todayTrip.collectionPoints)
+            if (cp.collectionPoint.latitude != null &&
+                cp.collectionPoint.longitude != null)
+              LatLng(
+                  cp.collectionPoint.latitude!, cp.collectionPoint.longitude!),
+        ]);
+        final reordered =
+            _routeOrderedCollectionPoints(anchor, todayTrip.collectionPoints);
+        final reorderedTrip = todayTrip.withCollectionPoints(reordered);
+        todayTrips = [
+          for (final t in todayTrips)
+            identical(t, todayTrip) ? reorderedTrip : t,
+        ];
+        todayTrip = reorderedTrip;
       }
 
       // History list (completed / cancelled past trips) is still backed by
@@ -376,49 +535,18 @@ class _DriverHomePageState extends State<DriverHomePage> {
         if (activeTrip != null) activeTrip,
       ];
 
-      final stops = <_DriverAssignmentStop>[];
-      final tripStops = <_TripPlannedStop>[];
-      if (detail != null) {
-        for (final cp in detail.collectionPoints) {
-          final lat = cp.collectionPoint.latitude;
-          final lng = cp.collectionPoint.longitude;
-          if (lat == null || lng == null) continue;
-          final status = cp.isCollected
-              ? _CustomerStatus.collected
-              : _CustomerStatus.pending;
-          final areaName = detail.summary.areaName;
-          stops.add(
-            _DriverAssignmentStop(
-              assignmentId: cp.uniqueId,
-              wardId: detail.summary.ward?.uniqueId ??
-                  detail.summary.panchayat?.uniqueId,
-              wardName: areaName,
-              customerName: cp.collectionPoint.name,
-              assignmentType: detail.summary.wasteType.name,
-              shift: detail.summary.scheduledTime ?? 'scheduled',
-              location: LatLng(lat, lng),
-              status: status,
-            ),
-          );
-          tripStops.add(
-            _TripPlannedStop(
-              plannedStopId: cp.uniqueId,
-              sequence: cp.sequence > 0 ? cp.sequence : tripStops.length + 1,
-              location: LatLng(lat, lng),
-              collectionPointId: cp.collectionPoint.uniqueId,
-              propertyType: cp.status,
-              isCollected: cp.isCollected,
-            ),
-          );
-        }
-        tripStops.sort((a, b) => a.sequence.compareTo(b.sequence));
-      }
+      // The Map tab defaults to the primary (bin) trip. Build its stops via the
+      // shared per-trip helper so a household trip renders its customers.
+      final mapTrip = todayTrip;
+      final (stops, tripStops) = _buildMapStopsForTrip(mapTrip);
 
       setState(() {
         _customers = stops;
         _tripStops = tripStops;
         _tripPolyline = const [];
+        _todayTrips = todayTrips;
         _todayTrip = todayTrip;
+        _mapTrip = mapTrip;
         _activeTripId = activeTrip?.assignmentUniqueId;
         _activeRoutePlanId = detail?.summary.tripPlan?.uniqueId;
         _activeVehicleType = null;
@@ -433,6 +561,7 @@ class _DriverHomePageState extends State<DriverHomePage> {
         _assignmentError = null;
         _tripError = null;
       });
+      _applyCollectionModeState(CollectionModeStore.mode.value);
     } catch (e) {
       setState(() {
         _loadingCustomers = false;
@@ -445,15 +574,121 @@ class _DriverHomePageState extends State<DriverHomePage> {
     }
   }
 
-  LatLng _staticLocationNearStops(List<_TripPlannedStop> stops) {
-    if (stops.isEmpty) return GammaGeofenceConfig.center;
+  /// Build the Map tab's stop lists for [trip].
+  ///
+  /// A household/bulk trip has no bins: each assigned household becomes a map
+  /// "customer" pin, and [_computeRoute] turns those into an optimised
+  /// multi-stop route from the driver. There are no numbered bin trip-stops.
+  /// A bin trip keeps the collection-point behaviour (each point is both a
+  /// customer pin and a numbered [_TripPlannedStop]).
+  (List<_DriverAssignmentStop>, List<_TripPlannedStop>) _buildMapStopsForTrip(
+      OperatorTripToday? trip) {
+    final stops = <_DriverAssignmentStop>[];
+    final tripStops = <_TripPlannedStop>[];
+    if (trip == null) return (stops, tripStops);
 
-    var minLat = stops.first.location.latitude;
+    final detail = trip.toHistoryDetail();
+
+    if (trip.isHousehold) {
+      final households = [...trip.householdCollections]
+        ..sort((a, b) => a.sequence.compareTo(b.sequence));
+      for (final h in households) {
+        final lat = h.latitude;
+        final lng = h.longitude;
+        if (lat == null || lng == null) continue;
+        stops.add(
+          _DriverAssignmentStop(
+            assignmentId: h.uniqueId,
+            wardId: null,
+            wardName: (h.address != null && h.address!.trim().isNotEmpty)
+                ? h.address!
+                : detail.summary.areaName,
+            customerName: h.customerName,
+            assignmentType: 'household_collection',
+            shift: detail.summary.scheduledTime ?? 'scheduled',
+            location: LatLng(lat, lng),
+            sequence: h.sequence,
+            status: h.isCollected
+                ? _CustomerStatus.collected
+                : _CustomerStatus.pending,
+          ),
+        );
+      }
+      return (stops, tripStops);
+    }
+
+    for (final cp in detail.collectionPoints) {
+      final lat = cp.collectionPoint.latitude;
+      final lng = cp.collectionPoint.longitude;
+      if (lat == null || lng == null) continue;
+      final seq = cp.sequence > 0 ? cp.sequence : tripStops.length + 1;
+      stops.add(
+        _DriverAssignmentStop(
+          assignmentId: cp.uniqueId,
+          wardId: detail.summary.ward?.uniqueId ??
+              detail.summary.panchayat?.uniqueId,
+          wardName: detail.summary.areaName,
+          customerName: cp.collectionPoint.name,
+          assignmentType: detail.summary.wasteType.name,
+          shift: detail.summary.scheduledTime ?? 'scheduled',
+          location: LatLng(lat, lng),
+          sequence: seq,
+          status: cp.isCollected
+              ? _CustomerStatus.collected
+              : _CustomerStatus.pending,
+        ),
+      );
+      tripStops.add(
+        _TripPlannedStop(
+          plannedStopId: cp.uniqueId,
+          sequence: seq,
+          location: LatLng(lat, lng),
+          collectionPointId: cp.collectionPoint.uniqueId,
+          propertyType: cp.status,
+          isCollected: cp.isCollected,
+        ),
+      );
+    }
+    // Route order is the single source of truth: keep both lists in sequence.
+    stops.sort((a, b) => a.sequence.compareTo(b.sequence));
+    tripStops.sort((a, b) => a.sequence.compareTo(b.sequence));
+    return (stops, tripStops);
+  }
+
+  /// Switch the Map tab to show [trip] (bin or household) and open it. Called
+  /// when a carousel card is tapped so the correct trip's stops are plotted.
+  void _openMapForTrip(OperatorTripToday trip) {
+    final (stops, tripStops) = _buildMapStopsForTrip(trip);
+    final detail = trip.toHistoryDetail();
+    setState(() {
+      _todayTrip = trip;
+      _mapTrip = trip;
+      _customers = stops;
+      _tripStops = tripStops;
+      _tripPolyline = const [];
+      _activeTripId = trip.assignmentUniqueId;
+      _activeRoutePlanId = detail.summary.tripPlan?.uniqueId;
+      _activeTripDetail = detail;
+      _staticDriverLocation = _anchorForVisibleTripStops(stops, tripStops);
+      _currentAssignments = [trip.toHistorySummary()];
+      _activeTab = _DriverTab.map;
+    });
+  }
+
+  LatLng _staticLocationNearStops(List<_TripPlannedStop> stops) =>
+      _staticLocationNear([for (final s in stops) s.location]);
+
+  /// A synthetic driver start near a cluster of [points] (offset to the SW of
+  /// their bounding box). Used both to place the driver marker and as the
+  /// anchor for the route-order re-sequence, so the two agree.
+  LatLng _staticLocationNear(List<LatLng> points) {
+    if (points.isEmpty) return GammaGeofenceConfig.center;
+
+    var minLat = points.first.latitude;
     var maxLat = minLat;
-    var minLng = stops.first.location.longitude;
+    var minLng = points.first.longitude;
     var maxLng = minLng;
-    for (final stop in stops) {
-      final point = stop.location;
+    for (final point in points) {
       minLat = min(minLat, point.latitude);
       maxLat = max(maxLat, point.latitude);
       minLng = min(minLng, point.longitude);
@@ -465,6 +700,52 @@ class _DriverHomePageState extends State<DriverHomePage> {
     final latOffset = max(0.003, (maxLat - minLat) * 0.18);
     final lngOffset = max(0.003, (maxLng - minLng) * 0.18);
     return LatLng(centerLat - latOffset, centerLng - lngOffset);
+  }
+
+  /// Re-order a bin trip's collection points into a driver-first visiting order
+  /// (greedy nearest-neighbour from [anchor]) and renumber them 1..N. This is
+  /// the SINGLE source of truth for stop numbering: both the home collection-
+  /// point list and the map markers consume this order, so "Stop 1" is the same
+  /// place on both. Points without coordinates keep their relative order at the
+  /// end. Already-collected points keep their route number.
+  List<OperatorTripCollectionPoint> _routeOrderedCollectionPoints(
+      LatLng anchor, List<OperatorTripCollectionPoint> points) {
+    final located = <(OperatorTripCollectionPoint, LatLng)>[];
+    final unlocated = <OperatorTripCollectionPoint>[];
+    for (final p in points) {
+      final lat = p.collectionPoint.latitude;
+      final lng = p.collectionPoint.longitude;
+      if (lat == null || lng == null) {
+        unlocated.add(p);
+      } else {
+        located.add((p, LatLng(lat, lng)));
+      }
+    }
+
+    const distance = Distance();
+    final ordered = <OperatorTripCollectionPoint>[];
+    var cursor = anchor;
+    final remaining = [...located];
+    while (remaining.isNotEmpty) {
+      var bestIdx = 0;
+      var bestDist = distance(cursor, remaining.first.$2);
+      for (var i = 1; i < remaining.length; i++) {
+        final d = distance(cursor, remaining[i].$2);
+        if (d < bestDist) {
+          bestDist = d;
+          bestIdx = i;
+        }
+      }
+      final chosen = remaining.removeAt(bestIdx);
+      ordered.add(chosen.$1);
+      cursor = chosen.$2;
+    }
+    ordered.addAll(unlocated);
+
+    return [
+      for (var i = 0; i < ordered.length; i++)
+        ordered[i].copyWith(sequence: i + 1),
+    ];
   }
 
   // List<_DriverAssignmentStop> _decodeCustomerList(String body,
@@ -527,11 +808,11 @@ class _DriverHomePageState extends State<DriverHomePage> {
     switch (tab) {
       case _DriverTab.home:
         return CaptainHomeTab(
-          trip: _todayTrip,
+          trips: _visibleTodayTrips,
           loading: _loadingTrip,
           error: _tripError,
           onRefresh: _loadAssignmentsForDriver,
-          onOpenMap: () => setState(() => _activeTab = _DriverTab.map),
+          onOpenMap: _openMapForTrip,
           onScan: _openScanner,
           onOpenTrips: _openTripsPage,
           driverName: nameFromState,
@@ -546,8 +827,11 @@ class _DriverHomePageState extends State<DriverHomePage> {
           activeTripDetail: _activeTripDetail,
           tripStops: _tripStops,
           tripPolyline: _tripPolyline,
-          activeRouteGeojson: _todayTrip?.routeGeojson,
-          activeTripId: _activeTripId,
+          // A household trip has no server-computed bin route; the map builds an
+          // optimised multi-stop route from the customer stops via ORS instead.
+          activeRouteGeojson:
+              (_mapTrip?.isHousehold ?? false) ? null : _mapTrip?.routeGeojson,
+          activeTripId: _mapTrip?.assignmentUniqueId ?? _activeTripId,
           activeRoutePlanId: _activeRoutePlanId,
           activeVehicleType: _activeVehicleType,
           tripLoading: _loadingTrip,
@@ -567,9 +851,19 @@ class _DriverHomePageState extends State<DriverHomePage> {
           onLogout: () => _logout(context),
           driverName: nameFromState,
           empId: empIdFromState,
-          vehicle: vehicle,
+          tripVehicle: _resolveProfileTripVehicle(),
         );
     }
+  }
+
+  OperatorTripVehicle? _resolveProfileTripVehicle() {
+    final activeVehicle = _todayTrip?.vehicle;
+    if (activeVehicle != null) return activeVehicle;
+    for (final trip in _todayTrips) {
+      final tripVehicle = trip.vehicle;
+      if (tripVehicle != null) return tripVehicle;
+    }
+    return null;
   }
 
   _DriverTab _tabFromIndex(int index) {
@@ -618,64 +912,33 @@ class _DriverHomePageState extends State<DriverHomePage> {
   /// crew performs (both inherited from the operator app):
   ///   • Bin QR — validate a bin against today's trip, then weight entry.
   ///   • Household — scan a customer QR, then wet/dry/mixed weighment.
+  ///
+  /// The global Household/Bin toggle owns this choice now, so the FAB opens
+  /// only the currently-selected flow instead of asking again.
   Future<void> _openScanner() async {
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) => SafeArea(
-        child: Container(
-          margin: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
-          decoration: BoxDecoration(
-            color: CaptainTheme.surface,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: CaptainTheme.hairline),
-            boxShadow: CaptainTheme.elevatedShadow,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'What are you collecting?',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: CaptainTheme.strongText,
-                ),
-              ),
-              const SizedBox(height: 14),
-              _ScanChoiceTile(
-                icon: Icons.delete_rounded,
-                color: CaptainTheme.accent,
-                title: 'Bin collection',
-                subtitle: 'Scan a bin QR and record its weight',
-                onTap: () => Navigator.of(sheetContext).pop('bin'),
-              ),
-              const SizedBox(height: 10),
-              _ScanChoiceTile(
-                icon: Icons.home_work_rounded,
-                color: CaptainTheme.info,
-                title: 'Household collection',
-                subtitle: 'Scan a customer QR, enter wet / dry / mixed weights',
-                onTap: () => Navigator.of(sheetContext).pop('household'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    if (!mounted || choice == null) return;
-
-    if (choice == 'bin') {
+    if (CollectionModeStore.mode.value == CollectionMode.bin) {
       final result = await Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const OperatorTripScanScreen()),
       );
       if (!mounted) return;
       if (result != null) await _loadAssignmentsForDriver();
-    } else if (choice == 'household') {
+    } else {
+      final householdAssignmentId =
+          (_todayTrip != null && _todayTrip!.isHousehold)
+              ? _todayTrip!.assignmentUniqueId
+              : null;
+      final householdStatuses = <String, String>{
+        if (_todayTrip != null && _todayTrip!.isHousehold)
+          for (final stop in _todayTrip!.householdCollections)
+            stop.customerUniqueId: stop.isCollected ? 'collected' : stop.status,
+      };
       await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const OperatorQRScanner()),
+        MaterialPageRoute(
+          builder: (_) => OperatorQRScanner(
+            expectedAssignmentId: householdAssignmentId,
+            knownAssignmentStatuses: householdStatuses,
+          ),
+        ),
       );
       if (!mounted) return;
       await _loadAssignmentsForDriver();
@@ -827,6 +1090,12 @@ class _HomeTabState extends State<_HomeTab> with TickerProviderStateMixin {
 
   List<LatLng> _orsRoute = [];
   List<LatLng> _tripPolyline = [];
+  // Overview route split into two visual states:
+  //  • _activeLeg   — driver → the immediate next pending stop (solid, blue).
+  //  • _upcomingLeg — that stop → the remaining stops (dotted, grey).
+  // The active leg advances as the driver collects / defers / skips a stop.
+  List<LatLng> _activeLeg = [];
+  List<LatLng> _upcomingLeg = [];
   MapStyle _mapStyle = kDefaultMapStyle;
   double _driverBearing = 0.0;
   List<_DriverAssignmentStop> _customers = [];
@@ -875,7 +1144,14 @@ class _HomeTabState extends State<_HomeTab> with TickerProviderStateMixin {
     });
     _computeRoute();
     _computeTripRoadRoute();
+    _computeLegs();
     _maybeAutoReroute();
+    // Frame the active leg (driver → next stop) as soon as the map is laid out,
+    // so the first thing the driver sees is a clear driver-to-next-stop view
+    // even before the road route resolves.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _fitActiveLeg();
+    });
   }
 
   LatLng _sanitizeDriverLocation(LatLng location) {
@@ -914,6 +1190,9 @@ class _HomeTabState extends State<_HomeTab> with TickerProviderStateMixin {
       _navAnimController.reverse();
       _animateToOverview();
     }
+    // The active stop was handled (collected / deferred / skipped) — advance the
+    // active leg to the next pending stop and re-frame.
+    _computeLegs();
     widget.onStatusChanged(id, status);
   }
 
@@ -956,6 +1235,7 @@ class _HomeTabState extends State<_HomeTab> with TickerProviderStateMixin {
 
     if (customersChanged || driverChanged) {
       _computeRoute();
+      _computeLegs();
     }
 
     if (tripChanged || driverChanged) {
@@ -996,13 +1276,6 @@ class _HomeTabState extends State<_HomeTab> with TickerProviderStateMixin {
           _driverBearing = 0.0;
         }
       });
-
-      if (_navMode == _NavigationMode.overview) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _fitDriverAndNextCustomer();
-        });
-      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -1010,6 +1283,124 @@ class _HomeTabState extends State<_HomeTab> with TickerProviderStateMixin {
         _driverBearing = 0.0;
       });
     }
+  }
+
+  /// The ordered list of stops still to visit, in route order. Stops marked
+  /// "collect later" are deferred to the end so the active leg advances to the
+  /// next collectable stop.
+  List<_DriverAssignmentStop> _pendingRouteStops() => [
+        ..._customers.where((c) => c.status != _CustomerStatus.later),
+        ..._customers.where((c) => c.status == _CustomerStatus.later),
+      ];
+
+  /// Split the overview route into an active leg (driver → immediate next stop)
+  /// and the upcoming legs (that stop → the rest). The active leg is drawn
+  /// solid; the upcoming legs are drawn dotted/grey until the driver collects,
+  /// defers, or skips the current stop — at which point this recomputes and the
+  /// next stop's leg becomes active.
+  Future<void> _computeLegs() async {
+    final pending = _pendingRouteStops();
+    if (pending.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _activeLeg = [];
+        _upcomingLeg = [];
+      });
+      return;
+    }
+
+    final next = pending.first;
+    List<LatLng> active;
+    try {
+      active = await ORSService.fetchRoadRoute(
+        driver: _driverLocation,
+        stops: [next.location],
+      );
+    } catch (_) {
+      active = [];
+    }
+    if (active.isEmpty) active = [_driverLocation, next.location];
+
+    List<LatLng> upcoming = [];
+    final rest = pending.skip(1).map((c) => c.location).toList();
+    if (rest.isNotEmpty) {
+      try {
+        upcoming = await ORSService.fetchRoadRoute(
+          driver: next.location,
+          stops: rest,
+        );
+      } catch (_) {
+        upcoming = [next.location, ...rest];
+      }
+      if (upcoming.isEmpty) upcoming = [next.location, ...rest];
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _activeLeg = active;
+      _upcomingLeg = upcoming;
+    });
+
+    if (_navMode == _NavigationMode.overview) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _fitActiveLeg();
+      });
+    }
+  }
+
+  /// Frame the map so the whole active leg (driver → immediate next stop) fills
+  /// the view. Falls back to driver + nearest stop if the leg isn't ready.
+  void _fitActiveLeg() {
+    final points = <LatLng>[_driverLocation, ..._activeLeg];
+    if (points.length < 2) {
+      _fitDriverAndNearestStop();
+      return;
+    }
+    widget.mapController.fitCamera(
+      CameraFit.bounds(
+        bounds: LatLngBounds.fromPoints(points),
+        padding: _overviewFitPadding,
+      ),
+    );
+  }
+
+  /// The stop (household customer or bin collection point) closest to the
+  /// driver — used to frame the map on open.
+  LatLng? _nearestStopLocation() {
+    final points = <LatLng>[
+      ..._customers.map((c) => c.location),
+      ..._tripStops.map((s) => s.location),
+    ];
+    if (points.isEmpty) return null;
+    const distance = Distance();
+    var nearest = points.first;
+    var best = distance(_driverLocation, nearest);
+    for (final p in points.skip(1)) {
+      final d = distance(_driverLocation, p);
+      if (d < best) {
+        best = d;
+        nearest = p;
+      }
+    }
+    return nearest;
+  }
+
+  /// Frame the map so the driver and their NEAREST stop are both clearly in
+  /// view (instead of zooming out to fit every stop). This is the view the
+  /// driver sees when they open the map.
+  void _fitDriverAndNearestStop() {
+    final nearest = _nearestStopLocation();
+    if (nearest == null) {
+      widget.mapController.move(_driverLocation, 15.0);
+      return;
+    }
+    final bounds = LatLngBounds.fromPoints([_driverLocation, nearest]);
+    widget.mapController.fitCamera(
+      CameraFit.bounds(
+        bounds: bounds,
+        padding: _overviewFitPadding,
+      ),
+    );
   }
 
   void _fitDriverAndNextCustomer() {
@@ -1076,12 +1467,10 @@ class _HomeTabState extends State<_HomeTab> with TickerProviderStateMixin {
   void _recenterNavigation() {
     if (_navMode == _NavigationMode.navigating) {
       _animateToNavigationView();
+    } else if (_customers.isEmpty && _tripStops.isNotEmpty) {
+      _fitTripRoute();
     } else {
-      if (_customers.isEmpty && _tripStops.isNotEmpty) {
-        _fitTripRoute();
-      } else {
-        _fitDriverAndNextCustomer();
-      }
+      _fitDriverAndNextCustomer();
     }
   }
 
@@ -1733,12 +2122,19 @@ class _HomeTabState extends State<_HomeTab> with TickerProviderStateMixin {
       }
     }
     final navigationCustomer = isNavigating ? activeCustomer : null;
+    // The next stop is the head of the route order (deferred "collect later"
+    // stops go last), so the card matches the active leg's destination.
+    final pendingStops = _pendingRouteStops();
     final nextCustomer =
-        !isNavigating && _customers.isNotEmpty ? _customers.first : null;
+        !isNavigating && pendingStops.isNotEmpty ? pendingStops.first : null;
+    // Use the stop's shared route sequence so the card reads the same number as
+    // the map marker and the home list (e.g. "Stop 3 of 8"). Fall back to the
+    // list index if a sequence wasn't provided.
     final nextCustomerPosition = nextCustomer == null
         ? 0
-        : widget.customers
-            .indexWhere((customer) => customer.id == nextCustomer.id);
+        : (nextCustomer.sequence > 0
+            ? nextCustomer.sequence - 1
+            : _customers.indexWhere((c) => c.id == nextCustomer.id));
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
     final bottomOverlayOffset = 84.0 + bottomInset;
     // The map now carries ONLY the next-collection-point card (the daily
@@ -1777,29 +2173,45 @@ class _HomeTabState extends State<_HomeTab> with TickerProviderStateMixin {
                         child: buildMapTileLayer(MapStyle.standard),
                       )
                     : buildMapTileLayer(_mapStyle),
-                if (_orsRoute.isNotEmpty &&
-                    (isNavigating || _tripPolyline.isEmpty))
+                // NAVIGATING: keep the full solid active route (turn-by-turn).
+                if (isNavigating && _orsRoute.isNotEmpty)
                   PolylineLayer(
                     polylines: [
                       Polyline(
                         points: _orsRoute,
-                        color: const Color(0xFFFFE100),
-                        borderColor: Colors.black,
-                        borderStrokeWidth: 2.0,
-                        strokeWidth: isNavigating ? 6.0 : 5.0,
+                        color: _kRouteCore,
+                        borderColor: _kRouteCasing,
+                        borderStrokeWidth: 3.5,
+                        strokeWidth: 7.0,
                       ),
                     ],
                   ),
-                if (_tripPolyline.isNotEmpty)
+                // OVERVIEW: upcoming legs are drawn first (underneath) as a
+                // dotted, greyed line — the driver isn't heading there yet.
+                if (!isNavigating && _upcomingLeg.length >= 2)
                   PolylineLayer(
                     polylines: [
                       Polyline(
-                        // Start the route from the driver's current location.
-                        points: [_driverLocation, ..._tripPolyline],
-                        color: const Color(0xFFFFE100),
-                        borderColor: Colors.black,
-                        borderStrokeWidth: 2.0,
-                        strokeWidth: 5.0,
+                        points: _upcomingLeg,
+                        color: _kRouteUpcoming,
+                        strokeWidth: 4.0,
+                        pattern: StrokePattern.dotted(
+                          spacingFactor: 2.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                // OVERVIEW: the active leg (driver → immediate next stop) is the
+                // solid, prominent blue line drawn on top.
+                if (!isNavigating && _activeLeg.length >= 2)
+                  PolylineLayer(
+                    polylines: [
+                      Polyline(
+                        points: _activeLeg,
+                        color: _kRouteCore,
+                        borderColor: _kRouteCasing,
+                        borderStrokeWidth: 3.5,
+                        strokeWidth: 6.0,
                       ),
                     ],
                   ),
@@ -3134,21 +3546,216 @@ class _AssignmentScreenState extends State<_AssignmentScreen> {
   }
 }
 
-class _ProfileTab extends StatelessWidget {
+class _ProfileTab extends StatefulWidget {
   const _ProfileTab({
     required this.onLogout,
     required this.driverName,
     required this.empId,
-    required this.vehicle,
+    required this.tripVehicle,
   });
 
   final VoidCallback onLogout;
   final String driverName;
   final String empId;
-  final VehicleModel? vehicle;
+  final OperatorTripVehicle? tripVehicle;
+
+  @override
+  State<_ProfileTab> createState() => _ProfileTabState();
+}
+
+class _ProfileTabState extends State<_ProfileTab> {
+  static const String _baseUrl = kOperatorProfileBaseUrl;
+
+  bool _loading = true;
+  String? _imageName;
+  String? _department;
+  String? _designation;
+  DateTime? _doj;
+  String? _drivingLicenceNo;
+  DateTime? _drivingLicenceExpiry;
+  int? _drivingExperienceYears;
+  String? _dob;
+  String? _bloodGroup;
+  String? _gender;
+  String? _presentAddress;
+  String? _permanentAddress;
+  String? _contactMobile;
+  String? _contactEmail;
+  bool _vehicleLoading = false;
+  String? _vehicleNumber;
+  String? _vehicleType;
+  String? _vehicleCondition;
+  bool? _vehicleIsActive;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchProfile();
+    _fetchVehicleDetails();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProfileTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.empId != widget.empId) {
+      _loading = true;
+      _fetchProfile();
+    }
+    if (oldWidget.tripVehicle?.uniqueId != widget.tripVehicle?.uniqueId ||
+        oldWidget.tripVehicle?.vehicleNo != widget.tripVehicle?.vehicleNo) {
+      _fetchVehicleDetails();
+    }
+  }
+
+  Future<void> _fetchProfile() async {
+    if (widget.empId.trim().isEmpty) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      return;
+    }
+    try {
+      final dio = await authorizedDio();
+      final response = await dio.get(
+        '${ApiConfig.attendanceBase}staff-profile/',
+        queryParameters: {'staff_id_id': widget.empId},
+      );
+      final json = response.data;
+      if (json is Map && json['status'] == 'success') {
+        final data = json['data'] as Map?;
+        final personal = data?['personal'] as Map?;
+        if (!mounted) return;
+        setState(() {
+          final registered = data?['attendance_reg_image']?.toString() ?? '';
+          final staffPhoto = data?['photo']?.toString() ?? '';
+          _imageName = registered.isNotEmpty ? registered : staffPhoto;
+          _department = data?['department']?.toString();
+          _designation = data?['designation']?.toString();
+          _doj = _tryParseDate(data?['doj']);
+          _drivingLicenceNo = data?['driving_licence_no']?.toString();
+          _drivingLicenceExpiry =
+              _tryParseDate(data?['driving_licence_expiry_date']);
+          _drivingExperienceYears =
+              int.tryParse(data?['driving_experience_years']?.toString() ?? '');
+          _dob = personal?['dob']?.toString();
+          _bloodGroup = personal?['blood_group']?.toString();
+          _gender = personal?['gender']?.toString();
+          _presentAddress = personal?['present_address']?.toString();
+          _permanentAddress = personal?['permanent_address']?.toString();
+          _contactMobile = personal?['contact_mobile']?.toString();
+          _contactEmail = personal?['contact_email']?.toString();
+          _loading = false;
+        });
+      } else {
+        if (!mounted) return;
+        setState(() => _loading = false);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _fetchVehicleDetails() async {
+    final tripVehicle = widget.tripVehicle;
+    if (tripVehicle == null) {
+      if (!mounted) return;
+      setState(() {
+        _vehicleLoading = false;
+        _vehicleNumber = null;
+        _vehicleType = null;
+        _vehicleCondition = null;
+        _vehicleIsActive = null;
+      });
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _vehicleLoading = true;
+        _vehicleNumber = tripVehicle.vehicleNo;
+        _vehicleType = null;
+        _vehicleCondition = null;
+        _vehicleIsActive = null;
+      });
+    }
+
+    final vehicleId = tripVehicle.uniqueId.trim();
+    if (vehicleId.isEmpty) {
+      if (!mounted) return;
+      setState(() => _vehicleLoading = false);
+      return;
+    }
+
+    try {
+      final dio = await authorizedDio();
+      final response = await dio.get('${ApiConfig.vehicles}$vehicleId/');
+      final data = response.data is Map
+          ? Map<String, dynamic>.from(response.data as Map)
+          : const <String, dynamic>{};
+      if (!mounted) return;
+      setState(() {
+        _vehicleNumber =
+            data['vehicle_no']?.toString() ?? tripVehicle.vehicleNo;
+        _vehicleType = data['vehicle_type_name']?.toString();
+        _vehicleCondition =
+            _formatVehicleCondition(data['vehicle_condition']?.toString());
+        final isActiveRaw = data['is_active'];
+        _vehicleIsActive = isActiveRaw == true ||
+            isActiveRaw?.toString().toLowerCase() == 'true';
+        _vehicleLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _vehicleLoading = false);
+    }
+  }
+
+  DateTime? _tryParseDate(dynamic value) {
+    if (value == null) return null;
+    return DateTime.tryParse(value.toString());
+  }
+
+  String? _formatVehicleCondition(String? value) {
+    if (value == null || value.trim().isEmpty) return null;
+    final normalized = value.trim().toLowerCase().replaceAll('_', ' ');
+    return normalized
+        .split(' ')
+        .where((part) => part.isNotEmpty)
+        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+        .join(' ');
+  }
+
+  String _convertToUrl(String path) {
+    final clean = path.replaceAll('\\', '/');
+    if (clean.startsWith('http')) return clean;
+    if (clean.startsWith('/')) return '$_baseUrl$clean';
+    return '$_baseUrl/media/$clean';
+  }
+
+  bool _isEmpty(String? v) => v == null || v.trim().isEmpty;
 
   @override
   Widget build(BuildContext context) {
+    final driverName = widget.driverName;
+    final empId = widget.empId;
+    final hasPhoto = !_isEmpty(_imageName);
+
+    final hasEmployment =
+        !_isEmpty(_department) || !_isEmpty(_designation) || _doj != null;
+    final hasPersonal =
+        !_isEmpty(_dob) || !_isEmpty(_bloodGroup) || !_isEmpty(_gender);
+    final hasContact = !_isEmpty(_contactMobile) || !_isEmpty(_contactEmail);
+    final hasLicence = !_isEmpty(_drivingLicenceNo) ||
+        _drivingLicenceExpiry != null ||
+        _drivingExperienceYears != null;
+    final hasAddress =
+        !_isEmpty(_presentAddress) || !_isEmpty(_permanentAddress);
+    final hasVehicle = _vehicleLoading ||
+        !_isEmpty(_vehicleNumber) ||
+        !_isEmpty(_vehicleType) ||
+        !_isEmpty(_vehicleCondition) ||
+        _vehicleIsActive != null;
+
     return CaptainBackground(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -3164,11 +3771,24 @@ class _ProfileTab extends StatelessWidget {
                     height: 64,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: CaptainTheme.accentGradient,
+                      gradient: hasPhoto ? null : CaptainTheme.accentGradient,
                     ),
                     alignment: Alignment.center,
-                    child: Icon(Icons.person_rounded,
-                        size: 32, color: Colors.white),
+                    clipBehavior: Clip.antiAlias,
+                    child: hasPhoto
+                        ? Image.network(
+                            _convertToUrl(_imageName!),
+                            width: 64,
+                            height: 64,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Icon(
+                              Icons.person_rounded,
+                              size: 32,
+                              color: CaptainTheme.mutedText,
+                            ),
+                          )
+                        : Icon(Icons.person_rounded,
+                            size: 32, color: Colors.white),
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -3180,6 +3800,17 @@ class _ProfileTab extends StatelessWidget {
                       color: CaptainTheme.strongText,
                     ),
                   ),
+                  if (!_isEmpty(_designation)) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      _designation!,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: CaptainTheme.accent,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 2),
                   Text(
                     'ID: $empId',
@@ -3195,8 +3826,92 @@ class _ProfileTab extends StatelessWidget {
 
             const SizedBox(height: 18),
 
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: CircularProgressIndicator(),
+              ),
+
+            if (!_loading && hasEmployment) ...[
+              _ProfileSectionCard(
+                icon: Icons.badge_outlined,
+                title: 'EMPLOYMENT',
+                rows: [
+                  if (!_isEmpty(_department)) ('Department', _department!),
+                  if (!_isEmpty(_designation)) ('Designation', _designation!),
+                  if (_doj != null)
+                    ('Date of joining', DateFormat.yMMMd().format(_doj!)),
+                ],
+              ),
+              const SizedBox(height: 18),
+            ],
+
+            if (!_loading && hasLicence) ...[
+              _ProfileSectionCard(
+                icon: Icons.badge_outlined,
+                title: 'DRIVING LICENCE',
+                rows: [
+                  if (!_isEmpty(_drivingLicenceNo))
+                    ('Licence no.', _drivingLicenceNo!),
+                  if (_drivingLicenceExpiry != null)
+                    (
+                      'Expiry',
+                      DateFormat.yMMMd().format(_drivingLicenceExpiry!),
+                    ),
+                  if (_drivingExperienceYears != null)
+                    ('Experience', '$_drivingExperienceYears yrs'),
+                ],
+                warning: _drivingLicenceExpiry != null &&
+                        _drivingLicenceExpiry!.isBefore(
+                            DateTime.now().add(const Duration(days: 30)))
+                    ? (_drivingLicenceExpiry!.isBefore(DateTime.now())
+                        ? 'Licence has expired'
+                        : 'Licence expires soon')
+                    : null,
+              ),
+              const SizedBox(height: 18),
+            ],
+
+            if (!_loading && hasPersonal) ...[
+              _ProfileSectionCard(
+                icon: Icons.person_outline_rounded,
+                title: 'PERSONAL',
+                rows: [
+                  if (!_isEmpty(_dob)) ('Date of birth', _dob!),
+                  if (!_isEmpty(_bloodGroup)) ('Blood group', _bloodGroup!),
+                  if (!_isEmpty(_gender)) ('Gender', _gender!),
+                ],
+              ),
+              const SizedBox(height: 18),
+            ],
+
+            if (!_loading && hasContact) ...[
+              _ProfileSectionCard(
+                icon: Icons.contact_phone_outlined,
+                title: 'CONTACT',
+                rows: [
+                  if (!_isEmpty(_contactMobile)) ('Mobile', _contactMobile!),
+                  if (!_isEmpty(_contactEmail)) ('Email', _contactEmail!),
+                ],
+              ),
+              const SizedBox(height: 18),
+            ],
+
+            if (!_loading && hasAddress) ...[
+              _ProfileSectionCard(
+                icon: Icons.home_outlined,
+                title: 'ADDRESS',
+                rows: [
+                  if (!_isEmpty(_presentAddress)) ('Present', _presentAddress!),
+                  if (!_isEmpty(_permanentAddress))
+                    ('Permanent', _permanentAddress!),
+                ],
+              ),
+              const SizedBox(height: 18),
+            ],
+
             // Vehicle card
-            if (vehicle != null)
+            if (hasVehicle)
               CaptainGlassCard(
                 padding: const EdgeInsets.all(14),
                 child: Column(
@@ -3220,22 +3935,29 @@ class _ProfileTab extends StatelessWidget {
                     const SizedBox(height: 10),
                     _SimpleRow(
                       'Number',
-                      vehicle!.vehicleNumber ?? '—',
+                      _vehicleNumber ?? '—',
                     ),
                     const SizedBox(height: 8),
                     _SimpleRow(
                       'Type',
-                      vehicle!.vehicleType ?? '—',
+                      _vehicleType ?? '—',
                     ),
+                    if (!_isEmpty(_vehicleCondition)) ...[
+                      const SizedBox(height: 8),
+                      _SimpleRow(
+                        'Condition',
+                        _vehicleCondition!,
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     Row(
                       children: [
                         Expanded(
                           child: _SimpleRow(
                             'Status',
-                            (vehicle!.status ?? '').trim().isNotEmpty
-                                ? vehicle!.status!
-                                : '—',
+                            _vehicleIsActive == null
+                                ? '—'
+                                : (_vehicleIsActive! ? 'Active' : 'Inactive'),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -3244,10 +3966,9 @@ class _ProfileTab extends StatelessWidget {
                           height: 8,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: (vehicle!.status ?? '').toLowerCase() ==
-                                    'running'
+                            color: _vehicleIsActive == true
                                 ? CaptainTheme.success
-                                : CaptainTheme.warning,
+                                : CaptainTheme.mutedText,
                           ),
                         ),
                       ],
@@ -3256,7 +3977,7 @@ class _ProfileTab extends StatelessWidget {
                 ),
               ),
 
-            if (vehicle != null) const SizedBox(height: 18),
+            if (hasVehicle) const SizedBox(height: 18),
 
             // Theme toggle
             CaptainGlassCard(
@@ -3311,7 +4032,7 @@ class _ProfileTab extends StatelessWidget {
               width: double.infinity,
               height: 48,
               child: ElevatedButton.icon(
-                onPressed: onLogout,
+                onPressed: widget.onLogout,
                 icon: const Icon(Icons.logout_rounded, size: 18),
                 label: const Text(
                   'Logout',
@@ -3325,6 +4046,9 @@ class _ProfileTab extends StatelessWidget {
                   ),
                 ),
               ),
+            ),
+            SizedBox(
+              height: MediaQuery.viewPaddingOf(context).bottom + 104,
             ),
           ],
         ),
@@ -3351,15 +4075,86 @@ class _SimpleRow extends StatelessWidget {
             fontWeight: FontWeight.w600,
           ),
         ),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 13,
-            color: CaptainTheme.strongText,
-            fontWeight: FontWeight.w700,
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              fontSize: 13,
+              color: CaptainTheme.strongText,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
       ],
+    );
+  }
+}
+
+/// A titled profile detail card — icon + label header, a list of label/value
+/// rows, and an optional warning strip (e.g. licence expiring soon).
+class _ProfileSectionCard extends StatelessWidget {
+  const _ProfileSectionCard({
+    required this.icon,
+    required this.title,
+    required this.rows,
+    this.warning,
+  });
+
+  final IconData icon;
+  final String title;
+  final List<(String, String)> rows;
+  final String? warning;
+
+  @override
+  Widget build(BuildContext context) {
+    return CaptainGlassCard(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: CaptainTheme.accent),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 10.5,
+                  color: CaptainTheme.mutedText,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) const SizedBox(height: 8),
+            _SimpleRow(rows[i].$1, rows[i].$2),
+          ],
+          if (warning != null) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Icon(Icons.warning_amber_rounded,
+                    size: 14, color: CaptainTheme.warning),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    warning!,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: CaptainTheme.warning,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

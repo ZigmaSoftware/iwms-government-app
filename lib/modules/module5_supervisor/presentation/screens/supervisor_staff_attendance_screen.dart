@@ -26,8 +26,10 @@ class _SupervisorStaffAttendanceScreenState
 
   bool _loading = true;
   String? _error;
-  List<SupervisorStaff> _staff = [];
+  SupervisorStaffAttendanceSummary _summary =
+      SupervisorStaffAttendanceSummary.empty;
   String _query = '';
+  String _activeFilter = 'present';
 
   @override
   void initState() {
@@ -41,10 +43,10 @@ class _SupervisorStaffAttendanceScreenState
       _error = null;
     });
     try {
-      final staff = await _repo.fetchStaff();
+      final summary = await _repo.fetchStaffAttendanceSummary();
       if (!mounted) return;
       setState(() {
-        _staff = staff;
+        _summary = summary;
         _loading = false;
       });
     } catch (e) {
@@ -57,9 +59,10 @@ class _SupervisorStaffAttendanceScreenState
   }
 
   List<SupervisorStaff> get _filtered {
-    if (_query.trim().isEmpty) return _staff;
+    final source = _summary.listFor(_activeFilter);
+    if (_query.trim().isEmpty) return source;
     final q = _query.toLowerCase();
-    return _staff
+    return source
         .where((s) =>
             s.name.toLowerCase().contains(q) ||
             s.designation.toLowerCase().contains(q) ||
@@ -74,7 +77,8 @@ class _SupervisorStaffAttendanceScreenState
       return;
     }
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => AttendanceHistory(empId: staff.uniqueId)),
+      MaterialPageRoute(
+          builder: (_) => AttendanceHistory(empId: staff.uniqueId)),
     );
   }
 
@@ -97,7 +101,9 @@ class _SupervisorStaffAttendanceScreenState
     if (_error != null) {
       return SupervisorErrorView(message: _error!, onRetry: _load);
     }
-    if (_staff.isEmpty) {
+    if (_summary.presentCount == 0 &&
+        _summary.absentCount == 0 &&
+        _summary.leaveCount == 0) {
       return SupervisorEmptyView(
         message: 'No staff found.',
         icon: Icons.groups_rounded,
@@ -110,11 +116,57 @@ class _SupervisorStaffAttendanceScreenState
     return Column(
       children: [
         Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+          child: Row(
+            children: [
+              Expanded(
+                child: _StatusCard(
+                  label: 'Present',
+                  value: _summary.presentCount,
+                  active: _activeFilter == 'present',
+                  tint: const Color(0xFF0F8A58),
+                  onTap: () => setState(() => _activeFilter = 'present'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _StatusCard(
+                  label: 'Absent',
+                  value: _summary.absentCount,
+                  active: _activeFilter == 'absent',
+                  tint: SupervisorTheme.attendanceAlert,
+                  onTap: () => setState(() => _activeFilter = 'absent'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _StatusCard(
+                  label: 'On leave',
+                  value: _summary.leaveCount,
+                  active: _activeFilter == 'leave',
+                  tint: const Color(0xFFE0A11B),
+                  onTap: () => setState(() => _activeFilter = 'leave'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
           child: TextField(
             onChanged: (v) => setState(() => _query = v),
+            cursorColor: SupervisorTheme.accent,
+            style: const TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+              color: SupervisorTheme.strongText,
+            ),
             decoration: InputDecoration(
               hintText: 'Search staff…',
+              hintStyle: const TextStyle(
+                fontWeight: FontWeight.w500,
+                color: SupervisorTheme.mutedText,
+              ),
               prefixIcon: const Icon(Icons.search_rounded, size: 20),
               isDense: true,
               filled: true,
@@ -143,19 +195,101 @@ class _SupervisorStaffAttendanceScreenState
           child: RefreshIndicator(
             color: SupervisorTheme.accent,
             onRefresh: _load,
-            child: ListView.separated(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-              itemCount: list.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (_, i) => _StaffRow(
-                staff: list[i],
-                onTap: () => _openRecords(list[i]),
-              ),
-            ),
+            child: list.isEmpty
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(16, 32, 16, 120),
+                    children: [
+                      Center(
+                        child: Text(
+                          _activeFilter == 'leave'
+                              ? 'No staff on leave.'
+                              : 'No staff in this list.',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: SupervisorTheme.mutedText,
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+                    itemCount: list.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (_, i) => _StaffRow(
+                      staff: list[i],
+                      onTap: () => _openRecords(list[i]),
+                    ),
+                  ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _StatusCard extends StatelessWidget {
+  const _StatusCard({
+    required this.label,
+    required this.value,
+    required this.active,
+    required this.tint,
+    required this.onTap,
+  });
+
+  final String label;
+  final int value;
+  final bool active;
+  final Color tint;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(
+            color:
+                active ? tint.withValues(alpha: 0.14) : SupervisorTheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: active
+                  ? tint.withValues(alpha: 0.42)
+                  : SupervisorTheme.hairline.withValues(alpha: 0.6),
+            ),
+            boxShadow: SupervisorTheme.softShadow,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$value',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: active ? tint : SupervisorTheme.strongText,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: active ? tint : SupervisorTheme.mutedText,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
