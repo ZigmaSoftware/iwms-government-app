@@ -38,11 +38,16 @@ class SupervisorTimeChip extends StatelessWidget {
     required this.label,
     this.selected = false,
     this.onTap,
+    this.badgeCount = 0,
   });
 
   final String label;
   final bool selected;
   final VoidCallback? onTap;
+
+  /// Unread/pending count shown as a small circular badge — only rendered
+  /// when 1 or greater (never shows a literal "0").
+  final int badgeCount;
 
   @override
   Widget build(BuildContext context) {
@@ -53,6 +58,7 @@ class SupervisorTimeChip extends StatelessWidget {
         onTap: onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
+          alignment: Alignment.center,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
             color: selected ? SupervisorTheme.primary : SupervisorTheme.surface,
@@ -62,15 +68,41 @@ class SupervisorTimeChip extends StatelessWidget {
                   selected ? SupervisorTheme.primary : SupervisorTheme.hairline,
             ),
           ),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: selected ? Colors.white : SupervisorTheme.strongText,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              height: 1,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: selected ? Colors.white : SupervisorTheme.strongText,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  height: 1,
+                ),
+              ),
+              if (badgeCount > 0) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  constraints: const BoxConstraints(minWidth: 18),
+                  decoration: BoxDecoration(
+                    color: selected ? Colors.white : SupervisorTheme.danger,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    badgeCount > 9 ? '9+' : '$badgeCount',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: selected ? SupervisorTheme.primary : Colors.white,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),

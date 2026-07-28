@@ -8,6 +8,7 @@ import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_assignment_card.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_assignment_detail_sheet.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_state_views.dart';
+import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_trip_actions_sheet.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_visuals.dart';
 
 enum _TripFilter { all, inProgress, completed }
@@ -154,6 +155,17 @@ class _SupervisorTripsScreenState extends State<SupervisorTripsScreen> {
               ),
             ),
           ),
+          onActions: () async {
+            final applied = await SupervisorTripActionsSheet.show(
+              context,
+              assignmentId: filtered[i].uniqueId,
+            );
+            if (applied == true && context.mounted) {
+              context
+                  .read<SupervisorBloc>()
+                  .add(const SupervisorRefreshRequested());
+            }
+          },
         ),
       ),
     );

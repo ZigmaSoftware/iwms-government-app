@@ -536,7 +536,7 @@ class _OperatorTripScanScreenState extends State<OperatorTripScanScreen> {
       case 'WRONG_WASTE_TYPE':
         return 'Wrong waste type. ${e.message}';
       case 'WRONG_PANCHAYAT':
-        return 'Bin is outside your panchayat.';
+        return 'This bin is outside your assigned area.';
       case 'ALREADY_COLLECTED':
         return 'Already collected.';
       case 'BIN_NOT_FOUND':

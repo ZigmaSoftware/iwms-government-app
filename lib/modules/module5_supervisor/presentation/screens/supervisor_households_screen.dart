@@ -5,7 +5,7 @@ import 'package:iwms_citizen_app/core/env.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/data/supervisor_models.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/data/supervisor_repository.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/logic/supervisor_bloc.dart';
-import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_trip_map_screen.dart';
+import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_point_location_map_screen.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/theme/supervisor_theme.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_cards.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_point_status_sheet.dart';
@@ -93,7 +93,7 @@ class _SupervisorHouseholdsScreenState
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
               children: [
                 _HeaderGrid(summary: summary),
-                const SizedBox(height: 14),
+                const SizedBox(height: 1),
                 _FilterRow(
                   filter: _filter,
                   onChanged: (value) => setState(() {
@@ -101,7 +101,7 @@ class _SupervisorHouseholdsScreenState
                     _page = 0;
                   }),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 8),
                 if (_loading)
                   const Padding(
                     padding: EdgeInsets.only(top: 120),
@@ -120,120 +120,37 @@ class _SupervisorHouseholdsScreenState
                     final records = assignmentMap[item.uniqueId] ?? const [];
                     final status = _resolveStatus(records);
                     return Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: SupervisorInfoCard(
-                        title: item.name,
-                        trailing: _pill(
-                          records.isEmpty
-                              ? 'No trip today'
-                              : '${records.length} trip${records.length == 1 ? '' : 's'}',
-                          records.isEmpty
-                              ? SupervisorTheme.mutedText
-                              : SupervisorTheme.accent,
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _HouseholdCard(
+                        item: item,
+                        onViewStatus: () => _showStatusDialog(
+                          context,
+                          item: item,
+                          records: records,
+                          status: status,
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              records.isEmpty
-                                  ? 'Not assigned to any trip today.'
-                                  : records.length == 1
-                                      ? 'Assigned to 1 trip today.'
-                                      : 'Assigned to ${records.length} trips today.',
-                              style: const TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w700,
-                                color: SupervisorTheme.mutedText,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                _pill(status.label, status.color),
-                                _pill(
-                                  item.isActive ? 'Active' : 'Inactive',
-                                  item.isActive
-                                      ? SupervisorTheme.success
-                                      : SupervisorTheme.mutedText,
-                                ),
-                                if (item.contactNo.trim().isNotEmpty)
-                                  _pill(item.contactNo, SupervisorTheme.info),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            _DetailLine(
-                              icon: Icons.location_on_outlined,
-                              label: item.address,
-                            ),
-                            const SizedBox(height: 8),
-                            _DetailLine(
-                              icon: Icons.map_outlined,
-                              label: item.scopeLabel,
-                            ),
-                            const SizedBox(height: 12),
-                            Wrap(
-                              spacing: 10,
-                              runSpacing: 10,
-                              children: [
-                                OutlinedButton.icon(
-                                  onPressed: () => _showStatusDialog(
-                                    context,
-                                    item: item,
-                                    records: records,
-                                    status: status,
-                                  ),
-                                  icon: const Icon(Icons.fact_check_outlined,
-                                      size: 16),
-                                  label: const Text('Today status'),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: SupervisorTheme.accent,
-                                    side: BorderSide(
-                                      color: SupervisorTheme.accent
-                                          .withValues(alpha: 0.35),
+                        onShowQr: item.qrCodeUrl.trim().isEmpty
+                            ? null
+                            : () => _showQrDialog(
+                                  context,
+                                  title: item.name,
+                                  qrUrl: item.qrCodeUrl,
+                                  details: [
+                                    _DialogDetail(
+                                      label: 'Customer ID',
+                                      value: item.uniqueId,
                                     ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
+                                    _DialogDetail(
+                                      label: 'Address',
+                                      value: item.address,
                                     ),
-                                  ),
-                                ),
-                                if (item.qrCodeUrl.trim().isNotEmpty)
-                                  TextButton.icon(
-                                    onPressed: () => _showQrDialog(
-                                      context,
-                                      title: item.name,
-                                      qrUrl: item.qrCodeUrl,
-                                      details: [
-                                        _DialogDetail(
-                                          label: 'Customer ID',
-                                          value: item.uniqueId,
-                                        ),
-                                        _DialogDetail(
-                                          label: 'Address',
-                                          value: item.address,
-                                        ),
-                                        if (item.contactNo.trim().isNotEmpty)
-                                          _DialogDetail(
-                                            label: 'Phone',
-                                            value: item.contactNo,
-                                          ),
-                                      ],
-                                    ),
-                                    icon: const Icon(Icons.qr_code_rounded,
-                                        size: 17),
-                                    label: Text('QR ${_suffix(item.uniqueId)}'),
-                                    style: TextButton.styleFrom(
-                                      foregroundColor: SupervisorTheme.info,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
+                                    if (item.contactNo.trim().isNotEmpty)
+                                      _DialogDetail(
+                                        label: 'Phone',
+                                        value: item.contactNo,
                                       ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
+                                  ],
+                                ),
                       ),
                     );
                   }),
@@ -337,7 +254,9 @@ class _SupervisorHouseholdsScreenState
     required List<_HouseholdRecord> records,
     required _StatusInfo status,
   }) {
-    final mapRecord = records.isEmpty ? null : records.first;
+    final lat = double.tryParse(item.latitude);
+    final lng = double.tryParse(item.longitude);
+    final hasLocation = lat != null && lng != null && lat != 0 && lng != 0;
     SupervisorPointStatusSheet.show(
       context,
       title: item.name,
@@ -348,17 +267,19 @@ class _SupervisorHouseholdsScreenState
                 tripCode: record.assignment.tripCode,
               ))
           .toList(),
-      onViewMap: mapRecord == null
+      onViewMap: !hasLocation
           ? null
           : () {
               Navigator.of(context).pop();
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => SupervisorTripMapScreen(
-                    assignmentId: mapRecord.assignment.uniqueId,
+                  builder: (_) => SupervisorPointLocationMapScreen(
                     title: item.name,
-                    vehicleNo: mapRecord.assignment.vehicleNo,
-                    driverName: mapRecord.assignment.driverName,
+                    latitude: lat,
+                    longitude: lng,
+                    subtitle: item.address.trim().isNotEmpty
+                        ? item.address
+                        : item.scopeLabel,
                   ),
                 ),
               );
@@ -542,6 +463,9 @@ class _FilterRow extends StatelessWidget {
             ? SupervisorTheme.accent.withValues(alpha: 0.3)
             : SupervisorTheme.cardBorder,
       ),
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
     );
   }
 }
@@ -598,29 +522,130 @@ class _PaginationRow extends StatelessWidget {
   }
 }
 
-class _DetailLine extends StatelessWidget {
-  const _DetailLine({required this.icon, required this.label});
+class _HouseholdCard extends StatelessWidget {
+  const _HouseholdCard({
+    required this.item,
+    required this.onViewStatus,
+    this.onShowQr,
+  });
 
-  final IconData icon;
-  final String label;
+  final SupervisorHousehold item;
+  final VoidCallback onViewStatus;
+  final VoidCallback? onShowQr;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 16, color: SupervisorTheme.mutedText),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            label,
+    final statusColor =
+        item.isActive ? SupervisorTheme.success : SupervisorTheme.danger;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: SupervisorTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: SupervisorTheme.hairline),
+        boxShadow: SupervisorTheme.softShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration:
+                    BoxDecoration(color: statusColor, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  item.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: SupervisorTheme.strongText,
+                  ),
+                ),
+              ),
+              if (onShowQr != null) ...[
+                const SizedBox(width: 8),
+                InkWell(
+                  onTap: onShowQr,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: SupervisorTheme.cardBorder),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.qr_code_rounded,
+                      size: 18,
+                      color: SupervisorTheme.strongText,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            item.address,
             style: const TextStyle(
-              color: SupervisorTheme.strongText,
+              fontSize: 12.5,
               fontWeight: FontWeight.w600,
+              color: SupervisorTheme.mutedText,
             ),
           ),
-        ),
-      ],
+          const SizedBox(height: 2),
+          Text(
+            item.scopeLabel,
+            style: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: SupervisorTheme.mutedText,
+            ),
+          ),
+          if (item.contactNo.trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Phone: ${item.contactNo}',
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: SupervisorTheme.info,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton(
+              onPressed: onViewStatus,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: SupervisorTheme.strongText,
+                side: const BorderSide(color: SupervisorTheme.cardBorder),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text(
+                'View status',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -829,30 +854,6 @@ class _EmptyCard extends StatelessWidget {
       ),
     );
   }
-}
-
-Widget _pill(String text, Color color) {
-  return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-    decoration: BoxDecoration(
-      color: color.withValues(alpha: 0.12),
-      borderRadius: BorderRadius.circular(999),
-    ),
-    child: Text(
-      text,
-      style: TextStyle(
-        color: color,
-        fontSize: 12,
-        fontWeight: FontWeight.w700,
-      ),
-    ),
-  );
-}
-
-String _suffix(String uniqueId) {
-  final clean = uniqueId.trim();
-  if (clean.length <= 4) return clean;
-  return clean.substring(clean.length - 4);
 }
 
 bool _isFailure(String status) {

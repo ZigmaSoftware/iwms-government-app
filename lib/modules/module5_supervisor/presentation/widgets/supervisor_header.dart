@@ -14,6 +14,8 @@ class SupervisorHeader extends StatefulWidget {
     this.designation = 'Supervisor',
     this.zoneLabel = '',
     this.zoneCount = 0,
+    this.onNotificationsTap,
+    this.unreadNotificationCount = 0,
   });
 
   final String name;
@@ -24,6 +26,11 @@ class SupervisorHeader extends StatefulWidget {
   final String zoneLabel;
   final int zoneCount;
   final VoidCallback onLogout;
+
+  /// When provided, renders a bell icon (in-app notifications + push) next
+  /// to the logout button.
+  final VoidCallback? onNotificationsTap;
+  final int unreadNotificationCount;
 
   @override
   State<SupervisorHeader> createState() => _SupervisorHeaderState();
@@ -118,6 +125,7 @@ class _SupervisorHeaderState extends State<SupervisorHeader> {
                   _avatar(),
                   const SizedBox(width: 12),
                   Expanded(child: _identitySection()),
+                  if (widget.onNotificationsTap != null) _notificationsButton(),
                   _logoutButton(),
                 ],
               ),
@@ -196,6 +204,53 @@ class _SupervisorHeaderState extends State<SupervisorHeader> {
           ],
         ),
       ],
+    );
+  }
+
+  Widget _notificationsButton() {
+    return SizedBox(
+      width: 40,
+      height: 40,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          IconButton(
+            padding: EdgeInsets.zero,
+            tooltip: 'Notifications',
+            onPressed: widget.onNotificationsTap,
+            icon: const Icon(
+              Icons.notifications_none_rounded,
+              color: SupervisorTheme.strongText,
+              size: 22,
+            ),
+          ),
+          if (widget.unreadNotificationCount > 0)
+            Positioned(
+              top: 4,
+              right: 4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: SupervisorTheme.surface, width: 1),
+                ),
+                child: Text(
+                  widget.unreadNotificationCount > 9
+                      ? '9+'
+                      : '${widget.unreadNotificationCount}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 

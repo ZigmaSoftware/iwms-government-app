@@ -27,6 +27,9 @@ class DriverHeader extends StatefulWidget {
     this.designation,
     this.locationLabel,
     this.onProfileTap,
+    this.onDangerTap,
+    this.onNotificationsTap,
+    this.unreadNotificationCount = 0,
     this.collapsed = false,
     this.showCollectionModeToggle = true,
     required this.collectionMode,
@@ -43,6 +46,15 @@ class DriverHeader extends StatefulWidget {
   final String? locationLabel;
   final VoidCallback onLogout;
   final VoidCallback? onProfileTap;
+
+  /// When provided, renders a danger/report button (vehicle breakdown, extra
+  /// staff, emergency, ...) next to the logout button.
+  final VoidCallback? onDangerTap;
+
+  /// When provided, renders a notifications bell (vehicle replacement
+  /// approval/rejection, team changes, substitutions) with an unread badge.
+  final VoidCallback? onNotificationsTap;
+  final int unreadNotificationCount;
   final CollectionMode collectionMode;
   final ValueChanged<CollectionMode> onCollectionModeChanged;
 
@@ -162,6 +174,14 @@ class _DriverHeaderState extends State<DriverHeader> {
                   const SizedBox(width: 11),
                   Expanded(child: _buildIdentity(compact: widget.collapsed)),
                   const SizedBox(width: 8),
+                  if (widget.onNotificationsTap != null) ...[
+                    _notificationsButton(compact: widget.collapsed),
+                    const SizedBox(width: 8),
+                  ],
+                  if (widget.onDangerTap != null) ...[
+                    _dangerButton(compact: widget.collapsed),
+                    const SizedBox(width: 8),
+                  ],
                   _logoutButton(compact: widget.collapsed),
                 ],
               ),
@@ -266,6 +286,79 @@ class _DriverHeaderState extends State<DriverHeader> {
           ),
         ],
       ],
+    );
+  }
+
+  Widget _notificationsButton({required bool compact}) {
+    final double d = compact ? 32 : 38;
+    return SizedBox(
+      width: d,
+      height: d,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Material(
+            color: Colors.white.withValues(alpha: 0.12),
+            shape: const CircleBorder(),
+            clipBehavior: Clip.antiAlias,
+            child: IconButton(
+              padding: EdgeInsets.zero,
+              icon: Icon(Icons.notifications_none_rounded,
+                  color: Colors.white, size: compact ? 16 : 18),
+              onPressed: widget.onNotificationsTap,
+              tooltip: 'Notifications',
+            ),
+          ),
+          if (widget.unreadNotificationCount > 0)
+            Positioned(
+              top: -2,
+              right: -2,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.white, width: 1),
+                ),
+                child: Text(
+                  widget.unreadNotificationCount > 9
+                      ? '9+'
+                      : '${widget.unreadNotificationCount}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dangerButton({required bool compact}) {
+    final double d = compact ? 32 : 38;
+    return SizedBox(
+      width: d,
+      height: d,
+      child: Material(
+        color: Colors.white.withValues(alpha: 0.12),
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: IconButton(
+          padding: EdgeInsets.zero,
+          icon: Image.asset(
+            'assets/icons/warning.png',
+            width: compact ? 16 : 18,
+            height: compact ? 16 : 18,
+          ),
+          onPressed: widget.onDangerTap,
+          tooltip: 'Report an issue',
+        ),
+      ),
     );
   }
 

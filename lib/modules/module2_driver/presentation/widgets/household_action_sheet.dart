@@ -308,127 +308,131 @@ Future<String?> _askReason(BuildContext context, {required String status}) {
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
-    builder: (ctx) => Padding(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 4,
-        bottom: 20 + MediaQuery.viewInsetsOf(ctx).bottom,
-      ),
-      child: StatefulBuilder(
-        builder: (ctx, setSheet) => Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              notAvailable ? 'Why not available?' : 'Why collect later?',
-              style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: CaptainTheme.strongText),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final q in quick)
-                  ChoiceChip(
-                    label: Text(
-                      q,
-                      style: TextStyle(
-                        color: controller.text == q
-                            ? CaptainTheme.accentDeep
-                            : CaptainTheme.strongText,
-                        fontWeight: FontWeight.w700,
+    builder: (ctx) => GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => FocusScope.of(ctx).unfocus(),
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 4,
+          bottom: 20 + MediaQuery.viewInsetsOf(ctx).bottom,
+        ),
+        child: StatefulBuilder(
+          builder: (ctx, setSheet) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                notAvailable ? 'Why not available?' : 'Why collect later?',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: CaptainTheme.strongText),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final q in quick)
+                    ChoiceChip(
+                      label: Text(
+                        q,
+                        style: TextStyle(
+                          color: controller.text == q
+                              ? CaptainTheme.accentDeep
+                              : CaptainTheme.strongText,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
+                      selected: controller.text == q,
+                      selectedColor: CaptainTheme.accentSoft,
+                      backgroundColor: CaptainTheme.surface,
+                      disabledColor: CaptainTheme.surfaceMuted,
+                      checkmarkColor: CaptainTheme.accentDeep,
+                      side: BorderSide(
+                        color: controller.text == q
+                            ? CaptainTheme.accent
+                            : CaptainTheme.hairline,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      onSelected: (_) => setSheet(() => controller.text = q),
                     ),
-                    selected: controller.text == q,
-                    selectedColor: CaptainTheme.accentSoft,
-                    backgroundColor: CaptainTheme.surface,
-                    disabledColor: CaptainTheme.surfaceMuted,
-                    checkmarkColor: CaptainTheme.accentDeep,
-                    side: BorderSide(
-                      color: controller.text == q
-                          ? CaptainTheme.accent
-                          : CaptainTheme.hairline,
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                minLines: 1,
+                maxLines: 3,
+                cursorColor: CaptainTheme.accent,
+                style: TextStyle(
+                  color: CaptainTheme.strongText,
+                  fontWeight: FontWeight.w600,
+                ),
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  labelText: 'Reason',
+                  hintText: 'Add a reason',
+                  labelStyle: TextStyle(color: CaptainTheme.mutedText),
+                  hintStyle: TextStyle(color: CaptainTheme.mutedText),
+                  filled: true,
+                  fillColor: CaptainTheme.surfaceMuted,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(color: CaptainTheme.hairline),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(color: CaptainTheme.hairline),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(
+                      color: CaptainTheme.accent,
+                      width: 1.4,
                     ),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(color: CaptainTheme.danger),
+                  ),
+                  focusedErrorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide(
+                      color: CaptainTheme.danger,
+                      width: 1.4,
+                    ),
+                  ),
+                ),
+                onChanged: (_) => setSheet(() {}),
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton(
+                  onPressed: controller.text.trim().isEmpty
+                      ? null
+                      : () => Navigator.of(ctx).pop(controller.text.trim()),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CaptainTheme.accentDeep,
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: CaptainTheme.surfaceMuted,
+                    disabledForegroundColor: CaptainTheme.mutedText,
+                    elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    onSelected: (_) => setSheet(() => controller.text = q),
                   ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              minLines: 1,
-              maxLines: 3,
-              cursorColor: CaptainTheme.accent,
-              style: TextStyle(
-                color: CaptainTheme.strongText,
-                fontWeight: FontWeight.w600,
-              ),
-              textCapitalization: TextCapitalization.sentences,
-              decoration: InputDecoration(
-                labelText: 'Reason',
-                hintText: 'Add a reason',
-                labelStyle: TextStyle(color: CaptainTheme.mutedText),
-                hintStyle: TextStyle(color: CaptainTheme.mutedText),
-                filled: true,
-                fillColor: CaptainTheme.surfaceMuted,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(color: CaptainTheme.hairline),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(color: CaptainTheme.hairline),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(
-                    color: CaptainTheme.accent,
-                    width: 1.4,
-                  ),
-                ),
-                errorBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(color: CaptainTheme.danger),
-                ),
-                focusedErrorBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(
-                    color: CaptainTheme.danger,
-                    width: 1.4,
-                  ),
+                  child: const Text('Save'),
                 ),
               ),
-              onChanged: (_) => setSheet(() {}),
-            ),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton(
-                onPressed: controller.text.trim().isEmpty
-                    ? null
-                    : () => Navigator.of(ctx).pop(controller.text.trim()),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: CaptainTheme.accentDeep,
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor: CaptainTheme.surfaceMuted,
-                  disabledForegroundColor: CaptainTheme.mutedText,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                child: const Text('Save'),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     ),

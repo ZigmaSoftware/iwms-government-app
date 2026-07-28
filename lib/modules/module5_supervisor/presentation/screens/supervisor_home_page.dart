@@ -1,7 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import 'package:iwms_citizen_app/core/api_config.dart';
+import 'package:iwms_citizen_app/core/push/push_notification_service.dart';
 import 'package:iwms_citizen_app/core/ui/app_flash.dart';
+import 'package:iwms_citizen_app/data/repositories/staff_notification_repository.dart';
+import 'package:iwms_citizen_app/data/repositories/vehicle_breakdown_repository.dart';
 import 'package:iwms_citizen_app/modules/module1_citizen/citizen/map.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/data/supervisor_models.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/data/supervisor_grievance_repository.dart';
@@ -12,6 +18,7 @@ import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_staff_screen.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_teams_screen.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_vehicles_screen.dart';
+import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_breakdowns_screen.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_collection_points_screen.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/logic/supervisor_bloc.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_grievance_screen.dart';
@@ -20,7 +27,8 @@ import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_header.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_state_views.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_visuals.dart';
-import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_waste_chart.dart';
+import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_waste_summary_cards.dart';
+import 'package:iwms_citizen_app/shared/widgets/staff_notifications_screen.dart';
 
 /// Dashboard tab — header + zone KPIs + activity/alerts feed.
 class SupervisorHomePage extends StatefulWidget {
@@ -54,12 +62,47 @@ class _SupervisorHomePageState extends State<SupervisorHomePage> {
   int _grievanceCount = 0;
   int _collectionPointCount = 0;
   int _householdCount = 0;
+  int _pendingBreakdownCount = 0;
+  int _unreadNotificationCount = 0;
+  final StaffNotificationRepository _notificationRepo =
+      StaffNotificationRepository();
+  final VehicleBreakdownRepository _breakdownRepo =
+      VehicleBreakdownRepository();
 
   @override
   void initState() {
     super.initState();
     _loadGrievanceCount();
     _loadHierarchyCounts();
+    _loadPendingBreakdownCount();
+    _loadUnreadNotificationCount();
+    unawaited(PushNotificationService.instance.initAndRegister(
+      registerUrl: ApiConfig.registerStaffFcmToken,
+    ));
+  }
+
+  Future<void> _loadPendingBreakdownCount() async {
+    try {
+      final reports =
+          await _breakdownRepo.fetchBreakdowns(approvalStatus: 'PENDING');
+      if (!mounted) return;
+      setState(() => _pendingBreakdownCount = reports.length);
+    } catch (_) {}
+  }
+
+  Future<void> _loadUnreadNotificationCount() async {
+    try {
+      final count = await _notificationRepo.fetchUnreadCount();
+      if (!mounted) return;
+      setState(() => _unreadNotificationCount = count);
+    } catch (_) {}
+  }
+
+  Future<void> _openNotifications() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const StaffNotificationsScreen()),
+    );
+    _loadUnreadNotificationCount();
   }
 
   Future<void> _loadGrievanceCount() async {
@@ -98,6 +141,8 @@ class _SupervisorHomePageState extends State<SupervisorHomePage> {
                 onLogout: widget.onLogout,
                 zoneLabel: state.scopeLabel,
                 zoneCount: state.scope.zoneIds.length,
+                onNotificationsTap: _openNotifications,
+                unreadNotificationCount: _unreadNotificationCount,
               ),
               Expanded(
                 // Static dotted background: painted once behind the scroll view
@@ -147,7 +192,7 @@ class _SupervisorHomePageState extends State<SupervisorHomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SupervisorWasteChart(),
+              const SupervisorWasteSummaryCards(),
               const SizedBox(height: 18),
               const Text(
                 'Quick actions',
@@ -226,9 +271,10 @@ class _SupervisorHomePageState extends State<SupervisorHomePage> {
         const SizedBox(width: 8),
         Expanded(
           child: SupervisorTimeChip(
-            label: 'Approvals',
+            label: 'Reports',
             selected:
                 _selectedQuickActionFilter == _QuickActionFilter.approvals,
+            badgeCount: _pendingBreakdownCount,
             onTap: () => setState(() =>
                 _selectedQuickActionFilter = _QuickActionFilter.approvals),
           ),
@@ -420,6 +466,23 @@ class _SupervisorHomePageState extends State<SupervisorHomePage> {
           iconAsset: 'assets/icons/reports.png',
           label: 'Reports',
           onTap: () => soon('Reports'),
+        ),
+      ),
+      _QuickActionSpec(
+        filter: _QuickActionFilter.approvals,
+        tile: SupervisorGlassActionTile(
+          iconAsset: 'assets/icons/car-repair.png',
+          label: 'Breakdowns',
+          badgeLabel:
+              _pendingBreakdownCount > 0 ? '$_pendingBreakdownCount' : null,
+          onTap: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const SupervisorBreakdownsScreen(),
+              ),
+            );
+            _loadPendingBreakdownCount();
+          },
         ),
       ),
     ];

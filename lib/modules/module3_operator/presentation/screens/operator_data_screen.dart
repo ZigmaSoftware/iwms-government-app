@@ -172,7 +172,7 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
           .get(
             Uri.parse(
               '${ApiConfig.desktopBase}waste/get-waste-types/',
-            ),
+            ).replace(queryParameters: {'customer_id': widget.customerId}),
             headers: await _authHeaders(),
           )
           .timeout(const Duration(seconds: 5));

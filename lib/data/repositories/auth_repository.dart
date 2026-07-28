@@ -35,6 +35,7 @@ class AuthRepository {
   static const String _displayEmpIdKey = 'display_emp_id';
   static const String _permissionsKey = 'user_permissions';
   static const String _permissionBundleKey = 'user_permission_bundle';
+  static const String _geoScopeKey = 'user_geo_scope';
 
   AuthRepository(this._dio, this._prefs);
 
@@ -324,8 +325,16 @@ class AuthRepository {
     final token = _prefs.getString(_tokenKey);
     final permissionsRaw = _prefs.getString(_permissionsKey);
     final permissionBundleRaw = _prefs.getString(_permissionBundleKey);
+    final geoScopeRaw = _prefs.getString(_geoScopeKey);
     Map<String, dynamic>? permissions;
     Map<String, dynamic>? permissionBundle;
+    GeoScope? geoScope;
+    if (geoScopeRaw != null && geoScopeRaw.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(geoScopeRaw);
+        geoScope = GeoScope.fromApi(decoded);
+      } catch (_) {}
+    }
     if (permissionsRaw != null && permissionsRaw.trim().isNotEmpty) {
       try {
         final decoded = jsonDecode(permissionsRaw);
@@ -363,6 +372,7 @@ class AuthRepository {
         permissionBundle: permissionBundle != null
             ? PermissionBundle.fromApi(permissionBundle)
             : null,
+        geoScope: geoScope,
       );
     }
     return null;
@@ -394,6 +404,7 @@ class AuthRepository {
     await _prefs.remove(_tokenKey);
     await _prefs.remove(_permissionsKey);
     await _prefs.remove(_permissionBundleKey);
+    await _prefs.remove(_geoScopeKey);
   }
 
   Future<void> saveUser(UserModel user) async {
@@ -433,6 +444,13 @@ class AuthRepository {
       await _prefs.setString(_permissionBundleKey, jsonEncode(bundle.toJson()));
     } else {
       await _prefs.remove(_permissionBundleKey);
+    }
+
+    final geoScope = user.geoScope;
+    if (geoScope != null && !geoScope.isEmpty) {
+      await _prefs.setString(_geoScopeKey, jsonEncode(geoScope.toJson()));
+    } else {
+      await _prefs.remove(_geoScopeKey);
     }
   }
 

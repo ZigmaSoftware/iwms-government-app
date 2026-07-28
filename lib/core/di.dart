@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:get_it/get_it.dart';
 import 'package:iwms_citizen_app/data/repositories/assignment_service.dart';
@@ -37,7 +39,9 @@ Future<void> setupDI() async {
     () => NotificationController(getIt<NotificationService>()),
   );
   await getIt<CollectionHistoryService>().initialize();
-  await getIt<NotificationService>().initialize();
+  // Not awaited: this negotiates OS notification permissions, which can take
+  // several seconds and must not block the first frame / login screen.
+  unawaited(getIt<NotificationService>().initialize());
 
   // --- Repositories ---
   getIt.registerLazySingleton(() => AuthRepository(

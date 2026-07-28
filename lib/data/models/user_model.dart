@@ -31,6 +31,89 @@
 import 'package:equatable/equatable.dart';
 import 'package:iwms_citizen_app/data/models/permission_bundle.dart';
 
+/// The requesting staff's own geo hierarchy (from the login response's
+/// `profile.data_scope`), e.g. "Anthiyur Panchayat". Backend viewsets already
+/// scope list/create requests to this hierarchy automatically, but a few
+/// mobile create-flows (e.g. creating a brand-new StaffTemplate with no
+/// parent record to inherit geo from) need to attach these ids explicitly.
+class GeoScope extends Equatable {
+  const GeoScope({
+    this.stateId,
+    this.districtId,
+    this.areaTypeId,
+    this.corporationId,
+    this.municipalityId,
+    this.townPanchayatId,
+    this.panchayatUnionId,
+    this.panchayatId,
+  });
+
+  final String? stateId;
+  final String? districtId;
+  final String? areaTypeId;
+  final String? corporationId;
+  final String? municipalityId;
+  final String? townPanchayatId;
+  final String? panchayatUnionId;
+  final String? panchayatId;
+
+  static String? _uniqueId(dynamic node) {
+    if (node is Map) return node['unique_id']?.toString();
+    return null;
+  }
+
+  static GeoScope? fromApi(dynamic json) {
+    if (json is! Map) return null;
+    final scope = GeoScope(
+      stateId: _uniqueId(json['state']),
+      districtId: _uniqueId(json['district']),
+      areaTypeId: _uniqueId(json['area_type']),
+      corporationId: _uniqueId(json['corporation']),
+      municipalityId: _uniqueId(json['municipality']),
+      townPanchayatId: _uniqueId(json['town_panchayat']),
+      panchayatUnionId: _uniqueId(json['panchayat_union']),
+      panchayatId: _uniqueId(json['panchayat']),
+    );
+    return scope.isEmpty ? null : scope;
+  }
+
+  bool get isEmpty =>
+      stateId == null &&
+      districtId == null &&
+      areaTypeId == null &&
+      corporationId == null &&
+      municipalityId == null &&
+      townPanchayatId == null &&
+      panchayatUnionId == null &&
+      panchayatId == null;
+
+  Map<String, dynamic> toJson() => {
+        if (stateId != null) 'state': {'unique_id': stateId},
+        if (districtId != null) 'district': {'unique_id': districtId},
+        if (areaTypeId != null) 'area_type': {'unique_id': areaTypeId},
+        if (corporationId != null) 'corporation': {'unique_id': corporationId},
+        if (municipalityId != null)
+          'municipality': {'unique_id': municipalityId},
+        if (townPanchayatId != null)
+          'town_panchayat': {'unique_id': townPanchayatId},
+        if (panchayatUnionId != null)
+          'panchayat_union': {'unique_id': panchayatUnionId},
+        if (panchayatId != null) 'panchayat': {'unique_id': panchayatId},
+      };
+
+  @override
+  List<Object?> get props => [
+        stateId,
+        districtId,
+        areaTypeId,
+        corporationId,
+        municipalityId,
+        townPanchayatId,
+        panchayatUnionId,
+        panchayatId,
+      ];
+}
+
 class UserModel extends Equatable {
   final String userId;
   final String userName;
@@ -40,6 +123,7 @@ class UserModel extends Equatable {
   final String? employeeId;
   final Map<String, dynamic>? permissions;
   final PermissionBundle? permissionBundle;
+  final GeoScope? geoScope;
 
   const UserModel({
     required this.userId,
@@ -50,6 +134,7 @@ class UserModel extends Equatable {
     this.employeeId,
     this.permissions,
     this.permissionBundle,
+    this.geoScope,
   });
 
   static String normalizeRole(String? rawRole) {
@@ -72,6 +157,7 @@ class UserModel extends Equatable {
   factory UserModel.fromApi(Map<String, dynamic> json) {
     final perms = json["permissions"];
     final bundle = _parsePermissionBundle(json);
+    final profile = json["profile"];
     return UserModel(
       userId: json["unique_id"]?.toString() ?? "",
       userName: json["name"]?.toString() ?? "",
@@ -82,6 +168,7 @@ class UserModel extends Equatable {
       permissions:
           bundle?.permissions ?? (perms is Map<String, dynamic> ? perms : null),
       permissionBundle: bundle,
+      geoScope: profile is Map ? GeoScope.fromApi(profile["data_scope"]) : null,
     );
   }
 
@@ -99,6 +186,7 @@ class UserModel extends Equatable {
       permissions:
           bundle?.permissions ?? (perms is Map<String, dynamic> ? perms : null),
       permissionBundle: bundle,
+      geoScope: GeoScope.fromApi(json["geo_scope"]),
     );
   }
 
@@ -113,6 +201,7 @@ class UserModel extends Equatable {
       "employee_id": employeeId,
       "permissions": permissions,
       "permission_bundle": permissionBundle?.toJson(),
+      "geo_scope": geoScope?.toJson(),
     };
   }
 
@@ -126,6 +215,7 @@ class UserModel extends Equatable {
     Map<String, dynamic>? permissions,
     PermissionBundle? permissionBundle,
     bool clearPermissionBundle = false,
+    GeoScope? geoScope,
   }) {
     return UserModel(
       userId: userId ?? this.userId,
@@ -138,6 +228,7 @@ class UserModel extends Equatable {
       permissionBundle: clearPermissionBundle
           ? null
           : permissionBundle ?? this.permissionBundle,
+      geoScope: geoScope ?? this.geoScope,
     );
   }
 
@@ -170,5 +261,6 @@ class UserModel extends Equatable {
         employeeId,
         permissions,
         permissionBundle,
+        geoScope,
       ];
 }

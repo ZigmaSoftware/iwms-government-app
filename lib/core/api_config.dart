@@ -40,6 +40,24 @@ class ApiConfig {
       '${desktopBase}customer-masters/customercreations/';
   static const String registerFcmToken =
       '${desktopBase}customer-masters/customercreations/register-fcm-token/';
+  static const String registerStaffFcmToken =
+      '${desktopBase}user-creations/staffcreation/register-fcm-token/';
+
+  static const String vehicleBreakdowns =
+      '${desktopBase}schedule-operations/vehicle-breakdowns/';
+  static const String vehicleBreakdownAvailableStaff =
+      '${desktopBase}schedule-operations/vehicle-breakdowns/available-staff/';
+  static const String vehicleBreakdownAvailableVehicles =
+      '${desktopBase}schedule-operations/vehicle-breakdowns/available-vehicles/';
+
+  static const String staffNotifications =
+      '${desktopBase}schedule-operations/staff-notifications/';
+  static const String staffNotificationsUnreadCount =
+      '${desktopBase}schedule-operations/staff-notifications/unread-count/';
+  static const String staffNotificationsMarkAllRead =
+      '${desktopBase}schedule-operations/staff-notifications/mark-all-read/';
+  static const String staffTemplateAvailableStaff =
+      '${desktopBase}schedule-setup/staff-templates/available-staff/';
 
   // --- Grievance / complaint: citizen mobile (self-scoped, auth-only) ---
   // Government backend exposes the citizen complaint API under `citizen/complaint-tickets/`
@@ -56,36 +74,36 @@ class ApiConfig {
       '${desktopBase}complaint-ticket/tickets/';
 
   static const String assignments =
-      '${desktopBase}schedule-masters/daily-trip-assignments/';
+      '${desktopBase}schedule-operations/daily-trip-assignments/';
   static const String staffAssignments =
-      '${desktopBase}schedule-masters/daily-trip-assignments/';
+      '${desktopBase}schedule-operations/daily-trip-assignments/';
   static const String collectionLogs =
-      '${desktopBase}schedule-masters/bin-collection-events/';
+      '${desktopBase}schedule-operations/bin-collection-events/';
   static const String assignmentCustomerStatuses =
-      '${desktopBase}schedule-masters/daily-trip-household-collections/';
+      '${desktopBase}schedule-operations/daily-trip-household-collections/';
   static const String citizenAssignments =
-      '${desktopBase}schedule-masters/daily-trip-household-collections/';
+      '${desktopBase}schedule-operations/daily-trip-household-collections/';
   static const String tripAssignments =
-      '${desktopBase}schedule-masters/daily-trip-assignments/';
-  static const String tripShifts = '${desktopBase}schedule-masters/trip-plans/';
+      '${desktopBase}schedule-operations/daily-trip-assignments/';
+  static const String tripShifts = '${desktopBase}schedule-setup/trip-plans/';
   static const String tripCollectionPoints =
-      '${desktopBase}schedule-masters/daily-trip-collection-points/';
+      '${desktopBase}schedule-operations/daily-trip-collection-points/';
   static const String tripRoutePlans =
-      '${desktopBase}schedule-masters/trip-plans/';
+      '${desktopBase}schedule-setup/trip-plans/';
   static const String tripPlannedStops =
       '${desktopBase}schedule-masters/trip-plan-collection-points/';
   static const String tripRouteGeometry =
-      '${desktopBase}schedule-masters/daily-trip-collection-points/tracking/';
+      '${desktopBase}schedule-operations/daily-trip-collection-points/tracking/';
   static const String tripExecutionStops =
-      '${desktopBase}schedule-masters/daily-trip-collection-points/';
+      '${desktopBase}schedule-operations/daily-trip-collection-points/';
   static const String tripRoutePlanGenerate =
-      '${desktopBase}schedule-masters/daily-trip-collection-points/optimize-route/';
+      '${desktopBase}schedule-operations/daily-trip-collection-points/optimize-route/';
   static const String tripGenerate =
-      '${desktopBase}schedule-masters/daily-trip-assignments/generate-daily/';
+      '${desktopBase}schedule-operations/daily-trip-assignments/generate-daily/';
   static const String tripDriverRoute =
-      '${desktopBase}schedule-masters/daily-trip-collection-points/tracking/';
+      '${desktopBase}schedule-operations/daily-trip-collection-points/tracking/';
   static const String staffTemplates =
-      '${desktopBase}schedule-masters/staff-templates/';
+      '${desktopBase}schedule-setup/staff-templates/';
   static const String vehicles =
       '${desktopBase}transport-masters/vehicle-creation/';
   static const String users = '${desktopBase}user-creations/users-creation/';

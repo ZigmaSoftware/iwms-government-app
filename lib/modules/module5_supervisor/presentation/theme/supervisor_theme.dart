@@ -76,4 +76,37 @@ class SupervisorTheme {
 
   static const EdgeInsets pagePadding =
       EdgeInsets.symmetric(horizontal: 20, vertical: 16);
+
+  /// Text/input style for form fields — must be set explicitly on every
+  /// TextField/DropdownButtonFormField/InputDecorator in this module: the
+  /// app's global `InputDecorationTheme` (lib/core/theme/app_theme.dart)
+  /// defaults to a dark-green filled look that clashes with the supervisor
+  /// module's light surface, so bare `InputDecoration(...)` without this
+  /// inherits that theme instead of matching the rest of the app.
+  static const TextStyle inputTextStyle = TextStyle(
+    color: strongText,
+    fontWeight: FontWeight.w600,
+  );
+
+  static InputDecoration inputDecoration(String label, {String? hintText}) {
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(color: hairline.withValues(alpha: 0.6)),
+    );
+    return InputDecoration(
+      labelText: label,
+      hintText: hintText,
+      labelStyle: const TextStyle(color: mutedText, fontWeight: FontWeight.w500),
+      hintStyle: const TextStyle(color: mutedText, fontWeight: FontWeight.w500),
+      filled: true,
+      fillColor: surface,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      border: border,
+      enabledBorder: border,
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: const BorderSide(color: accent, width: 1.4),
+      ),
+    );
+  }
 }

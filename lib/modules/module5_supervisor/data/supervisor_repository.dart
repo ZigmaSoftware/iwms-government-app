@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import 'package:iwms_citizen_app/core/api_config.dart';
 import 'package:iwms_citizen_app/core/network/authorized_dio.dart';
+import 'package:iwms_citizen_app/data/models/user_model.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/data/supervisor_models.dart';
 
 /// Raised when a supervisor data fetch fails. Carries an optional [code] so
@@ -20,45 +21,31 @@ class SupervisorException implements Exception {
 /// existing backend endpoints (zone map + daily trip assignments). Read-only
 /// for this phase — assignment approval is intentionally not wired yet.
 class SupervisorRepository {
-  static const String _zoneMapMe =
-      '${ApiConfig.desktopBase}user-creations/supervisor-zone-map/me/';
   static const String _assignments =
-      '${ApiConfig.desktopBase}schedule-masters/daily-trip-assignments/';
+      '${ApiConfig.desktopBase}schedule-operations/daily-trip-assignments/';
   static const String _staff =
       '${ApiConfig.desktopBase}user-creations/staffcreation/';
   static const String _staffTemplates =
-      '${ApiConfig.desktopBase}schedule-masters/staff-templates/';
+      '${ApiConfig.desktopBase}schedule-setup/staff-templates/';
   static const String _tripLogs =
-      '${ApiConfig.desktopBase}schedule-masters/daily-trip-logs/';
+      '${ApiConfig.desktopBase}schedule-operations/daily-trip-logs/';
   static const String _attendanceRecords =
       '${ApiConfig.attendanceBase}records/';
   static const String _collectionPoints =
-      '${ApiConfig.desktopBase}schedule-masters/collection-points/';
+      '${ApiConfig.desktopBase}schedule-setup/collection-points/';
   static const String _households = ApiConfig.customerList;
+  static const String _alternativeStaffTemplates =
+      '${ApiConfig.desktopBase}schedule-setup/alternative-staff-templates/';
 
   /// Fetch the requesting supervisor's authorised zone scope.
+  ///
+  /// The government backend has no zone-map concept (it's hierarchy/ward
+  /// based, not zone-based) — `user-creations/supervisor-zone-map/me/` was
+  /// removed there well before ward support was added, so this always
+  /// resolves to an empty scope without a network round trip. Assignment
+  /// loading proceeds via `mine=true` regardless (see [fetchAssignments]).
   Future<SupervisorZoneScope> fetchMyZoneScope() async {
-    try {
-      final dio = await authorizedDio();
-      final res = await dio.get(_zoneMapMe);
-      final data = res.data;
-      if (data is Map<String, dynamic>) {
-        return SupervisorZoneScope.fromMeJson(data);
-      }
-      return SupervisorZoneScope.empty;
-    } on DioException catch (e) {
-      final code = e.response?.statusCode;
-      // 400 = no supervisor staff context. 404 = this backend has no zone-map
-      // endpoint at all (government backend is hierarchy-based, not zone-based).
-      // Either way there is no zone scope — degrade gracefully to empty and let
-      // assignment loading proceed via `mine=true`.
-      if (code == 400 || code == 404) {
-        return SupervisorZoneScope.empty;
-      }
-      throw SupervisorException(_message(e));
-    } catch (e) {
-      throw SupervisorException(e.toString());
-    }
+    return SupervisorZoneScope.empty;
   }
 
   /// Fetch today's (or [date]'s) assignments, optionally scoped to [zoneIds].
@@ -250,6 +237,209 @@ class SupervisorRepository {
       return _rawList(res.data)
           .map((e) => SupervisorHousehold.fromJson(e))
           .toList();
+    } on DioException catch (e) {
+      throw SupervisorException(_message(e));
+    } catch (e) {
+      throw SupervisorException(e.toString());
+    }
+  }
+
+  Future<List<SupervisorCrewOption>> fetchDrivers() =>
+      _fetchStaffByRole('driver');
+
+  Future<List<SupervisorCrewOption>> fetchOperators() =>
+      _fetchStaffByRole('operator');
+
+  /// Edits an existing staff template's driver/operator/extra operators. The
+  /// backend notifies (push + in-app) whichever staff are added/removed, and
+  /// any live trip already resolves the new crew (DailyTripAssignment reads
+  /// the current driver/operator off the template live).
+  Future<void> updateStaffTemplate({
+    required String uniqueId,
+    required String driverId,
+    required String operatorId,
+    List<String> extraOperatorIds = const [],
+  }) async {
+    try {
+      final dio = await authorizedDio();
+      await dio.patch('$_staffTemplates$uniqueId/', data: {
+        'driver_id': driverId,
+        'operator_id': operatorId,
+        'extra_operator_id': extraOperatorIds,
+      });
+    } on DioException catch (e) {
+      throw SupervisorException(_message(e));
+    } catch (e) {
+      throw SupervisorException(e.toString());
+    }
+  }
+
+  /// Drivers/operators NOT already on another active team — used by the "Add
+  /// team" form so a staff member can't be double-booked onto two teams at
+  /// once. [excludeTemplateId] keeps an edit showing that template's own
+  /// current driver/operator as still available.
+  Future<List<SupervisorCrewOption>> fetchAvailableDrivers({
+    String? excludeTemplateId,
+  }) =>
+      _fetchAvailableStaffByRole('driver', excludeTemplateId: excludeTemplateId);
+
+  Future<List<SupervisorCrewOption>> fetchAvailableOperators({
+    String? excludeTemplateId,
+  }) =>
+      _fetchAvailableStaffByRole('operator', excludeTemplateId: excludeTemplateId);
+
+  Future<List<SupervisorCrewOption>> _fetchAvailableStaffByRole(
+    String role, {
+    String? excludeTemplateId,
+  }) async {
+    try {
+      final dio = await authorizedDio();
+      final res = await dio.get(
+        ApiConfig.staffTemplateAvailableStaff,
+        queryParameters: {
+          'role': role,
+          if (excludeTemplateId != null && excludeTemplateId.isNotEmpty)
+            'exclude_id': excludeTemplateId,
+        },
+      );
+      return _rawList(res.data)
+          .map((j) => SupervisorCrewOption(
+                uniqueId: j['staff_unique_id']?.toString() ?? '',
+                name: j['employee_name']?.toString() ?? '',
+              ))
+          .where((option) => option.uniqueId.isNotEmpty)
+          .toList();
+    } on DioException catch (e) {
+      throw SupervisorException(_message(e));
+    } catch (e) {
+      throw SupervisorException(e.toString());
+    }
+  }
+
+  /// Government staff carry their role on `governmentusertype_name` (e.g.
+  /// `govt_panchayat_driver`), not `staffusertype_name` — filter client-side
+  /// like the web admin's staff dropdowns do.
+  Future<List<SupervisorCrewOption>> _fetchStaffByRole(
+    String roleKeyword,
+  ) async {
+    try {
+      final dio = await authorizedDio();
+      final res = await dio.get(_staff);
+      final options = <SupervisorCrewOption>[];
+      for (final j in _rawList(res.data)) {
+        final role = [
+          j['governmentusertype_name'],
+          j['staffusertype_name'],
+        ].where((v) => v != null).join(' ').toLowerCase();
+        if (!role.contains(roleKeyword)) continue;
+        final option = SupervisorCrewOption.fromJson(j);
+        if (option.uniqueId.isNotEmpty) options.add(option);
+      }
+      return options;
+    } on DioException catch (e) {
+      throw SupervisorException(_message(e));
+    } catch (e) {
+      throw SupervisorException(e.toString());
+    }
+  }
+
+  /// Alternative staff templates already created under this supervisor's
+  /// hierarchy (backend scopes the list automatically) — the "Substitute
+  /// staff" dropdown.
+  Future<List<SupervisorAltStaffTemplate>> fetchAlternativeStaffTemplates() async {
+    try {
+      final dio = await authorizedDio();
+      final res = await dio.get(_alternativeStaffTemplates);
+      return _rawList(res.data)
+          .map((e) => SupervisorAltStaffTemplate.fromJson(e))
+          .toList();
+    } on DioException catch (e) {
+      throw SupervisorException(_message(e));
+    } catch (e) {
+      throw SupervisorException(e.toString());
+    }
+  }
+
+  /// Creates a new alternative staff template ("Form ALT"). Geo hierarchy is
+  /// inherited server-side from [staffTemplateId] when not explicit, so it
+  /// doesn't need to be sent from here.
+  Future<void> createAlternativeStaffTemplate({
+    required String staffTemplateId,
+    required String driverId,
+    required String operatorId,
+    List<String> extraOperatorIds = const [],
+    required String fromDate,
+    required String toDate,
+    required String changeReason,
+    String? changeRemarks,
+  }) async {
+    try {
+      final dio = await authorizedDio();
+      await dio.post(_alternativeStaffTemplates, data: {
+        'staff_template': staffTemplateId,
+        'driver': driverId,
+        'operator': operatorId,
+        'extra_operator': extraOperatorIds,
+        'from_date': fromDate,
+        'to_date': toDate,
+        'change_reason': changeReason,
+        if (changeRemarks != null && changeRemarks.trim().isNotEmpty)
+          'change_remarks': changeRemarks,
+      });
+    } on DioException catch (e) {
+      throw SupervisorException(_message(e));
+    } catch (e) {
+      throw SupervisorException(e.toString());
+    }
+  }
+
+  /// Applies an alternative staff template substitution onto a trip
+  /// assignment — the substituted-in crew starts seeing the trip in their
+  /// own "my trips today", and the original crew stops seeing it.
+  Future<void> applyAlternativeStaffTemplate({
+    required String assignmentId,
+    required String altStaffTemplateId,
+  }) async {
+    try {
+      final dio = await authorizedDio();
+      await dio.patch(
+        '$_assignments$assignmentId/',
+        data: {'alt_staff_template_id': altStaffTemplateId},
+      );
+    } on DioException catch (e) {
+      throw SupervisorException(_message(e));
+    } catch (e) {
+      throw SupervisorException(e.toString());
+    }
+  }
+
+  /// Creates a new staff template ("Team"). [geo] carries the supervisor's
+  /// own hierarchy ids (state/district/area_type/.../panchayat) since a
+  /// brand-new template has no parent record to inherit geo from.
+  Future<void> createStaffTemplate({
+    required String driverId,
+    required String operatorId,
+    List<String> extraOperatorIds = const [],
+    required GeoScope? geo,
+  }) async {
+    try {
+      final dio = await authorizedDio();
+      await dio.post(_staffTemplates, data: {
+        'driver_id': driverId,
+        'operator_id': operatorId,
+        'extra_operator_id': extraOperatorIds,
+        if (geo?.stateId != null) 'state_id': geo!.stateId,
+        if (geo?.districtId != null) 'district_id': geo!.districtId,
+        if (geo?.areaTypeId != null) 'area_type_id': geo!.areaTypeId,
+        if (geo?.corporationId != null) 'corporation_id': geo!.corporationId,
+        if (geo?.municipalityId != null)
+          'municipality_id': geo!.municipalityId,
+        if (geo?.townPanchayatId != null)
+          'town_panchayat_id': geo!.townPanchayatId,
+        if (geo?.panchayatUnionId != null)
+          'panchayat_union_id': geo!.panchayatUnionId,
+        if (geo?.panchayatId != null) 'panchayat_id': geo!.panchayatId,
+      });
     } on DioException catch (e) {
       throw SupervisorException(_message(e));
     } catch (e) {

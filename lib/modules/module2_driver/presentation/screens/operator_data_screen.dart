@@ -134,6 +134,8 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
       final map = Map<String, dynamic>.from(value);
       return _stringify(
         map['name'] ??
+            map['ward_name'] ??
+            map['panchayat_name'] ??
             map['display_code'] ??
             map['title'] ??
             map['label'] ??
@@ -142,6 +144,15 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
       );
     }
     return _stringify(value);
+  }
+
+  /// First ward from the assignment's `wards_detail` list (the daily-trip-
+  /// assignments endpoint carries ward as a list, not a nested single map).
+  String _readWardName(dynamic wardsDetail) {
+    if (wardsDetail is List && wardsDetail.isNotEmpty) {
+      return _readDisplayName(wardsDetail.first);
+    }
+    return '';
   }
 
   String _normalizeAddress(Map<String, dynamic> map) {
@@ -223,14 +234,18 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
         final data = response.data;
         if (data is Map) {
           final assignmentMap = Map<String, dynamic>.from(data);
-          area = _readDisplayName(assignmentMap['panchayat']);
-          area =
-              area.isNotEmpty ? area : _readDisplayName(assignmentMap['ward']);
+          area = _readWardName(assignmentMap['wards_detail']);
+          area = area.isNotEmpty
+              ? area
+              : _readDisplayName(assignmentMap['ward']);
+          area = area.isNotEmpty
+              ? area
+              : _readDisplayName(assignmentMap['panchayat']);
           area = area.isNotEmpty
               ? area
               : _stringify(
-                  assignmentMap['panchayat_name'] ??
-                      assignmentMap['ward_name'] ??
+                  assignmentMap['ward_name'] ??
+                      assignmentMap['panchayat_name'] ??
                       assignmentMap['area_name'],
                 );
 
@@ -319,7 +334,7 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
           .get(
             Uri.parse(
               '${ApiConfig.desktopBase}waste/get-waste-types/',
-            ),
+            ).replace(queryParameters: {'customer_id': widget.customerId}),
             headers: await _authHeaders(),
           )
           .timeout(const Duration(seconds: 5));
@@ -1180,7 +1195,7 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
       _detailPill(Icons.calendar_today_outlined, 'Date', dateLabel),
       _detailPill(Icons.schedule_outlined, 'Time', timeLabel),
       if (_collectionArea.isNotEmpty)
-        _detailPill(Icons.location_city_outlined, 'Panchayat', _collectionArea),
+        _detailPill(Icons.location_city_outlined, 'Ward', _collectionArea),
       if (_assignmentLabel.isNotEmpty)
         _detailPill(Icons.assignment_outlined, 'Assignment', _assignmentLabel),
       _detailPill(Icons.badge_outlined, 'Customer ID', widget.customerId),

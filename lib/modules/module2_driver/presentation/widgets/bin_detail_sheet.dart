@@ -171,129 +171,133 @@ class _BinDetailSheetState extends State<BinDetailSheet> {
     final progress = widget.validation.progress;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottomInset),
-      child: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        child: ColoredBox(
-          color: CaptainTheme.background,
-          child: SafeArea(
-            top: false,
-            child: SingleChildScrollView(
-              padding: EdgeInsets.zero,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _Header(bin: bin, progress: progress),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _InfoCard(
-                          icon: Icons.location_on_outlined,
-                          title: 'Collection point',
-                          primary: cp.name,
-                          secondary: (cp.latitude != null &&
-                                  cp.longitude != null)
-                              ? '${cp.latitude!.toStringAsFixed(5)}, ${cp.longitude!.toStringAsFixed(5)}'
-                              : null,
-                        ),
-                        const SizedBox(height: 12),
-                        _InfoCard(
-                          icon: Icons.task_alt_rounded,
-                          title: 'Trip progress',
-                          primary:
-                              '${progress.collected}/${progress.total} CPs collected',
-                          secondary: progress.completed
-                              ? 'All bins on this trip are now done.'
-                              : 'Scan the next bin to continue.',
-                          accent: progress.completed
-                              ? CaptainTheme.success
-                              : CaptainTheme.accent,
-                        ),
-                        const SizedBox(height: 18),
-                        const _SectionLabel('Waste weight'),
-                        const SizedBox(height: 6),
-                        _WeightField(controller: _weightCtrl),
-                        const SizedBox(height: 14),
-                        const _SectionLabel('Notes (optional)'),
-                        const SizedBox(height: 6),
-                        _NotesField(controller: _notesCtrl),
-                        if (_errorMessage != null) ...[
-                          const SizedBox(height: 12),
-                          _ErrorBanner(message: _errorMessage!),
-                        ],
-                        const SizedBox(height: 20),
-                        _SubmitButton(
-                          loading: _submitting,
-                          onTap: (_submitting || _statusSubmitting)
-                              ? null
-                              : _submit,
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _StatusActionButton(
-                                label: 'Collect later',
-                                icon: Icons.schedule_rounded,
-                                color: CaptainTheme.gold,
-                                loading: _statusSubmitting,
-                                onTap: (_submitting || _statusSubmitting)
-                                    ? null
-                                    : () => _openStatusReasonSheet(
-                                          action: 'collect_later',
-                                          title:
-                                              'Why should this bin be collected later?',
-                                          quickReasons: const [
-                                            'Waste not ready',
-                                            'Road blocked',
-                                            'Asked to return later',
-                                            'Vehicle capacity issue',
-                                          ],
-                                        ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: _StatusActionButton(
-                                label: 'Not available',
-                                icon: Icons.report_gmailerrorred_rounded,
-                                color: CaptainTheme.danger,
-                                loading: _statusSubmitting,
-                                onTap: (_submitting || _statusSubmitting)
-                                    ? null
-                                    : () => _openStatusReasonSheet(
-                                          action: 'not_available',
-                                          title:
-                                              'Why is this bin not available?',
-                                          quickReasons: const [
-                                            'Bin missing',
-                                            'Access locked',
-                                            'Contaminated waste',
-                                            'Unsafe location',
-                                          ],
-                                        ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        TextButton(
-                          onPressed: (_submitting || _statusSubmitting)
-                              ? null
-                              : () => Navigator.of(context).pop(),
-                          style: TextButton.styleFrom(
-                            foregroundColor: CaptainTheme.mutedText,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Padding(
+        padding: EdgeInsets.only(bottom: bottomInset),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          child: ColoredBox(
+            color: CaptainTheme.background,
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _Header(bin: bin, progress: progress),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _InfoCard(
+                            icon: Icons.location_on_outlined,
+                            title: 'Collection point',
+                            primary: cp.name,
+                            secondary: (cp.latitude != null &&
+                                    cp.longitude != null)
+                                ? '${cp.latitude!.toStringAsFixed(5)}, ${cp.longitude!.toStringAsFixed(5)}'
+                                : null,
                           ),
-                          child: const Text('Cancel'),
-                        ),
-                      ],
+                          const SizedBox(height: 12),
+                          _InfoCard(
+                            icon: Icons.task_alt_rounded,
+                            title: 'Trip progress',
+                            primary:
+                                '${progress.collected}/${progress.total} CPs collected',
+                            secondary: progress.completed
+                                ? 'All bins on this trip are now done.'
+                                : 'Scan the next bin to continue.',
+                            accent: progress.completed
+                                ? CaptainTheme.success
+                                : CaptainTheme.accent,
+                          ),
+                          const SizedBox(height: 18),
+                          const _SectionLabel('Waste weight'),
+                          const SizedBox(height: 6),
+                          _WeightField(controller: _weightCtrl),
+                          const SizedBox(height: 14),
+                          const _SectionLabel('Notes (optional)'),
+                          const SizedBox(height: 6),
+                          _NotesField(controller: _notesCtrl),
+                          if (_errorMessage != null) ...[
+                            const SizedBox(height: 12),
+                            _ErrorBanner(message: _errorMessage!),
+                          ],
+                          const SizedBox(height: 20),
+                          _SubmitButton(
+                            loading: _submitting,
+                            onTap: (_submitting || _statusSubmitting)
+                                ? null
+                                : _submit,
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _StatusActionButton(
+                                  label: 'Collect later',
+                                  icon: Icons.schedule_rounded,
+                                  color: CaptainTheme.gold,
+                                  loading: _statusSubmitting,
+                                  onTap: (_submitting || _statusSubmitting)
+                                      ? null
+                                      : () => _openStatusReasonSheet(
+                                            action: 'collect_later',
+                                            title:
+                                                'Why should this bin be collected later?',
+                                            quickReasons: const [
+                                              'Waste not ready',
+                                              'Road blocked',
+                                              'Asked to return later',
+                                              'Vehicle capacity issue',
+                                            ],
+                                          ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _StatusActionButton(
+                                  label: 'Not available',
+                                  icon: Icons.report_gmailerrorred_rounded,
+                                  color: CaptainTheme.danger,
+                                  loading: _statusSubmitting,
+                                  onTap: (_submitting || _statusSubmitting)
+                                      ? null
+                                      : () => _openStatusReasonSheet(
+                                            action: 'not_available',
+                                            title:
+                                                'Why is this bin not available?',
+                                            quickReasons: const [
+                                              'Bin missing',
+                                              'Access locked',
+                                              'Contaminated waste',
+                                              'Unsafe location',
+                                            ],
+                                          ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          TextButton(
+                            onPressed: (_submitting || _statusSubmitting)
+                                ? null
+                                : () => Navigator.of(context).pop(),
+                            style: TextButton.styleFrom(
+                              foregroundColor: CaptainTheme.mutedText,
+                            ),
+                            child: const Text('Cancel'),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -674,116 +678,122 @@ class _StatusReasonSheetState extends State<_StatusReasonSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        20,
-        10,
-        20,
-        MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            widget.title,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: CaptainTheme.strongText,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          10,
+          20,
+          MediaQuery.of(context).viewInsets.bottom + 24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.title,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: CaptainTheme.strongText,
+              ),
             ),
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: widget.quickReasons.map((reason) {
-              final selected = _selectedReason == reason;
-              return ChoiceChip(
-                label: Text(reason),
-                selected: selected,
-                selectedColor: CaptainTheme.accentSoft,
-                backgroundColor: CaptainTheme.surface,
-                checkmarkColor: CaptainTheme.accentDeep,
-                labelStyle: TextStyle(
-                  color: selected
-                      ? CaptainTheme.accentDeep
-                      : CaptainTheme.strongText,
-                  fontWeight: FontWeight.w700,
-                ),
-                side: BorderSide(
-                  color: selected ? CaptainTheme.accent : CaptainTheme.hairline,
-                ),
-                shape: RoundedRectangleBorder(
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: widget.quickReasons.map((reason) {
+                final selected = _selectedReason == reason;
+                return ChoiceChip(
+                  label: Text(reason),
+                  selected: selected,
+                  selectedColor: CaptainTheme.accentSoft,
+                  backgroundColor: CaptainTheme.surface,
+                  checkmarkColor: CaptainTheme.accentDeep,
+                  labelStyle: TextStyle(
+                    color: selected
+                        ? CaptainTheme.accentDeep
+                        : CaptainTheme.strongText,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  side: BorderSide(
+                    color:
+                        selected ? CaptainTheme.accent : CaptainTheme.hairline,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  onSelected: (_) {
+                    setState(() {
+                      _selectedReason = reason;
+                      _controller.text = reason;
+                      _errorText = null;
+                    });
+                  },
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _controller,
+              minLines: 2,
+              maxLines: 4,
+              cursorColor: CaptainTheme.accent,
+              style: TextStyle(
+                color: CaptainTheme.strongText,
+                fontWeight: FontWeight.w600,
+              ),
+              decoration: InputDecoration(
+                labelText: 'Reason',
+                hintText: 'Enter what happened at this collection point',
+                errorText: _errorText,
+                labelStyle: TextStyle(color: CaptainTheme.mutedText),
+                filled: true,
+                fillColor: CaptainTheme.surfaceMuted,
+                border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: CaptainTheme.hairline),
                 ),
-                onSelected: (_) {
-                  setState(() {
-                    _selectedReason = reason;
-                    _controller.text = reason;
-                    _errorText = null;
-                  });
-                },
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _controller,
-            minLines: 2,
-            maxLines: 4,
-            cursorColor: CaptainTheme.accent,
-            style: TextStyle(
-              color: CaptainTheme.strongText,
-              fontWeight: FontWeight.w600,
-            ),
-            decoration: InputDecoration(
-              labelText: 'Reason',
-              hintText: 'Enter what happened at this collection point',
-              errorText: _errorText,
-              labelStyle: TextStyle(color: CaptainTheme.mutedText),
-              filled: true,
-              fillColor: CaptainTheme.surfaceMuted,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: CaptainTheme.hairline),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: CaptainTheme.hairline),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: CaptainTheme.accent, width: 1.4),
-              ),
-              errorBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide(color: CaptainTheme.danger),
-              ),
-            ),
-            onChanged: (_) {
-              if (_errorText != null) setState(() => _errorText = null);
-            },
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton.icon(
-              onPressed: _save,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: CaptainTheme.accentDeep,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: CaptainTheme.hairline),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide:
+                      BorderSide(color: CaptainTheme.accent, width: 1.4),
+                ),
+                errorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: CaptainTheme.danger),
                 ),
               ),
-              icon: const Icon(Icons.save_outlined),
-              label: const Text('Save status'),
+              onChanged: (_) {
+                if (_errorText != null) setState(() => _errorText = null);
+              },
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: _save,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: CaptainTheme.accentDeep,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                icon: const Icon(Icons.save_outlined),
+                label: const Text('Save status'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

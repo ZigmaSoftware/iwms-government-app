@@ -84,7 +84,7 @@ class _SupervisorTripMapScreenState extends State<SupervisorTripMapScreen> {
       // route geometry for this trip without loading every trip in the day.
       try {
         final tracking = await dio.get(
-          '${ApiConfig.desktopBase}schedule-masters/daily-trip-collection-points/tracking/',
+          '${ApiConfig.desktopBase}schedule-operations/daily-trip-collection-points/tracking/',
           queryParameters: {'trip_assignment_id': widget.assignmentId},
         );
         _parseTracking(tracking.data);

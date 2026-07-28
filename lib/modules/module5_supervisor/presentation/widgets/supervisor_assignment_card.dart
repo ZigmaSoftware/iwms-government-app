@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:iwms_citizen_app/modules/module5_supervisor/data/supervisor_models.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/theme/supervisor_theme.dart';
+import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_crew_detail_sheet.dart';
 import 'package:iwms_citizen_app/shared/widgets/crew_avatar_stack.dart';
 
 /// Card representing one daily trip assignment in the supervisor's zones.
@@ -13,6 +14,7 @@ class SupervisorAssignmentCard extends StatelessWidget {
     required this.assignment,
     this.onTap,
     this.onNavigate,
+    this.onActions,
   });
 
   final SupervisorAssignment assignment;
@@ -21,6 +23,10 @@ class SupervisorAssignmentCard extends StatelessWidget {
   /// When provided, renders a "Navigate" button that opens the driver's live
   /// route map (remaining collection points + ORS routing).
   final VoidCallback? onNavigate;
+
+  /// When provided, renders an "Actions" button (substitute staff/vehicle)
+  /// alongside "Navigate".
+  final VoidCallback? onActions;
 
   @override
   Widget build(BuildContext context) {
@@ -64,6 +70,8 @@ class SupervisorAssignmentCard extends StatelessWidget {
                         letterSpacing: 0,
                       ),
                     ),
+                    const Spacer(),
+                    _collectionTypePill(),
                   ],
                 ),
               ),
@@ -100,11 +108,15 @@ class SupervisorAssignmentCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    _staffRow(),
+                    _staffRow(context),
+                    if (assignment.hasBin || assignment.hasHousehold) ...[
+                      const SizedBox(height: 10),
+                      _progressRow(),
+                    ],
                   ],
                 ),
               ),
-              if (onNavigate != null) _navigateButton(),
+              if (onNavigate != null || onActions != null) _buttonRow(),
             ],
           ),
         ),
@@ -112,32 +124,76 @@ class SupervisorAssignmentCard extends StatelessWidget {
     );
   }
 
-  Widget _navigateButton() {
+  Widget _buttonRow() {
+    final buttonStyle = OutlinedButton.styleFrom(
+      foregroundColor: SupervisorTheme.accent,
+      side: BorderSide(color: SupervisorTheme.accent.withValues(alpha: 0.4)),
+      padding: const EdgeInsets.symmetric(vertical: 11),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-      child: SizedBox(
-        width: double.infinity,
-        child: OutlinedButton.icon(
-          onPressed: onNavigate,
-          icon: const Icon(Icons.navigation_rounded, size: 18),
-          label: const Text('Navigate'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: SupervisorTheme.accent,
-            side: BorderSide(
-                color: SupervisorTheme.accent.withValues(alpha: 0.4)),
-            padding: const EdgeInsets.symmetric(vertical: 11),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+      child: Row(
+        children: [
+          if (onNavigate != null)
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: onNavigate,
+                icon: const Icon(Icons.navigation_rounded, size: 18),
+                label: const Text('Navigate'),
+                style: buttonStyle,
+              ),
             ),
-            textStyle:
-                const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-          ),
-        ),
+          if (onNavigate != null && onActions != null)
+            const SizedBox(width: 10),
+          if (onActions != null)
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: onActions,
+                icon: const Icon(Icons.more_horiz_rounded, size: 18),
+                label: const Text('Actions'),
+                style: buttonStyle,
+              ),
+            ),
+        ],
       ),
     );
   }
 
-  Widget _staffRow() {
+  Widget _collectionTypePill() {
+    final label = assignment.collectionTypeLabel;
+    final isHousehold = assignment.hasHousehold && !assignment.hasBin;
+    final color = isHousehold ? const Color(0xFF7C3AED) : const Color(0xFF0EA5E9);
+    final icon = isHousehold ? Icons.home_outlined : Icons.delete_outline_rounded;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.2,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _staffRow(BuildContext context) {
     final crew = assignment.crew;
     final children = <Widget>[];
     if (crew != null &&
@@ -147,9 +203,10 @@ class SupervisorAssignmentCard extends StatelessWidget {
       children.addAll([
         CrewAvatarStack(
           crew: crew,
-          size: 22,
-          overlap: 12,
+          size: 34,
+          overlap: 18,
           borderColor: SupervisorTheme.surface,
+          onTap: () => SupervisorCrewDetailSheet.show(context, crew),
         ),
         const SizedBox(width: 8),
       ]);
@@ -196,6 +253,81 @@ class SupervisorAssignmentCard extends StatelessWidget {
       ));
     }
     return Row(children: children);
+  }
+
+  Widget _progressRow() {
+    final wasteKg = assignment.totalCollectedWeightKg;
+    final wasteLabel = wasteKg >= 10
+        ? wasteKg.toStringAsFixed(0)
+        : wasteKg.toStringAsFixed(1);
+    return Row(
+      children: [
+        Expanded(
+          child: _progressPill(
+            icon: Icons.shopping_bag_outlined,
+            color: const Color(0xFF0EA5E9),
+            label: 'Waste',
+            value: '$wasteLabel kg',
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: assignment.hasBin
+              ? _progressPill(
+                  icon: Icons.delete_outline_rounded,
+                  color: const Color(0xFF16A34A),
+                  label: 'Bins',
+                  value: '${assignment.binsCollected}/${assignment.binsTotal}',
+                )
+              : _progressPill(
+                  icon: Icons.location_on_outlined,
+                  color: SupervisorTheme.warning,
+                  label: 'Stops',
+                  value:
+                      '${assignment.stopsCollected}/${assignment.stopsTotal}',
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _progressPill({
+    required IconData icon,
+    required Color color,
+    required String label,
+    required String value,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _wasteChip(String waste) {

@@ -28,11 +28,16 @@ class PushNotificationService {
   bool _firebaseReady = false;
   bool _registeredThisSession = false;
 
-  /// Call once after login (or app start, if already logged in) for a citizen
-  /// account. Requests notification permission, gets the device's FCM token,
-  /// registers it with the backend, and wires foreground display + token
-  /// refresh. Safe to call multiple times.
-  Future<void> initAndRegister() async {
+  /// Call once after login (or app start, if already logged in). Requests
+  /// notification permission, gets the device's FCM token, registers it with
+  /// the backend, and wires foreground display + token refresh. Safe to call
+  /// multiple times.
+  ///
+  /// [registerUrl] defaults to the citizen registration endpoint; pass
+  /// `ApiConfig.registerStaffFcmToken` for driver/operator/supervisor logins.
+  Future<void> initAndRegister({
+    String registerUrl = ApiConfig.registerFcmToken,
+  }) async {
     if (!await _ensureFirebaseInitialized()) return;
 
     try {
@@ -40,9 +45,9 @@ class PushNotificationService {
       await messaging.requestPermission(alert: true, badge: true, sound: true);
 
       final token = await messaging.getToken();
-      if (token != null) await _registerToken(token);
+      if (token != null) await _registerToken(token, registerUrl);
 
-      messaging.onTokenRefresh.listen(_registerToken);
+      messaging.onTokenRefresh.listen((t) => _registerToken(t, registerUrl));
 
       // Foreground: FCM doesn't auto-show a system notification while the app
       // is open, so display it ourselves via the existing local-notification
@@ -76,11 +81,11 @@ class PushNotificationService {
     }
   }
 
-  Future<void> _registerToken(String token) async {
+  Future<void> _registerToken(String token, String registerUrl) async {
     if (_registeredThisSession) return;
     try {
       await AuthDio.dio.post(
-        ApiConfig.registerFcmToken,
+        registerUrl,
         data: {'fcm_token': token},
       );
       _registeredThisSession = true;

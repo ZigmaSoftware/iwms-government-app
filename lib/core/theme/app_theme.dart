@@ -92,9 +92,47 @@ class AppTheme {
         iconColor: AppColors.primary,
         textColor: AppColors.textPrimary,
       ),
+      // Dialogs and date pickers are utility popups, not brand surfaces — give
+      // them a neutral slate accent instead of falling back to the green
+      // colorScheme.primary, which reads oddly on non-branded modules (e.g.
+      // the supervisor app's own indigo-accented forms).
+      dialogTheme: const DialogThemeData(
+        backgroundColor: AppColors.surface,
+        surfaceTintColor: Colors.transparent,
+      ),
+      datePickerTheme: _neutralDatePickerTheme,
       pageTransitionsTheme: _cupertinoPageTransitions,
     );
   }
+
+  static const Color _neutralAccent = Color(0xFF334155); // slate, not green
+
+  static final DatePickerThemeData _neutralDatePickerTheme = DatePickerThemeData(
+    backgroundColor: AppColors.surface,
+    surfaceTintColor: Colors.transparent,
+    headerBackgroundColor: _neutralAccent,
+    headerForegroundColor: Colors.white,
+    todayBorder: const BorderSide(color: _neutralAccent),
+    todayForegroundColor: const WidgetStatePropertyAll(_neutralAccent),
+    dayForegroundColor: WidgetStateProperty.resolveWith(
+      (states) => states.contains(WidgetState.selected)
+          ? Colors.white
+          : AppColors.textPrimary,
+    ),
+    dayBackgroundColor: WidgetStateProperty.resolveWith(
+      (states) =>
+          states.contains(WidgetState.selected) ? _neutralAccent : null,
+    ),
+    yearForegroundColor: WidgetStateProperty.resolveWith(
+      (states) => states.contains(WidgetState.selected)
+          ? Colors.white
+          : AppColors.textPrimary,
+    ),
+    yearBackgroundColor: WidgetStateProperty.resolveWith(
+      (states) =>
+          states.contains(WidgetState.selected) ? _neutralAccent : null,
+    ),
+  );
 
   static ThemeData get darkTheme {
     return ThemeData(
@@ -181,6 +219,13 @@ class AppTheme {
       listTileTheme: const ListTileThemeData(
         iconColor: Colors.white70,
         textColor: Colors.white,
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: AppColors.darkCard,
+        surfaceTintColor: Colors.transparent,
+      ),
+      datePickerTheme: _neutralDatePickerTheme.copyWith(
+        backgroundColor: AppColors.darkCard,
       ),
       pageTransitionsTheme: _cupertinoPageTransitions,
     );

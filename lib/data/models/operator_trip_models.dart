@@ -395,8 +395,9 @@ class OperatorTripToday {
         crew: crew,
       );
 
-  /// Display name for the trip's service area (panchayat or ward).
-  String get areaName => panchayat?.name ?? ward?.name ?? '—';
+  /// Display name for the trip's service area (ward, falling back to
+  /// panchayat for older trips created before ward assignment existed).
+  String get areaName => ward?.name ?? panchayat?.name ?? '—';
 
   /// True for household / bulk-waste trips, which collect customers directly
   /// (no bins). Drives the adaptive list on the driver home.
@@ -826,7 +827,9 @@ class OperatorTripHistorySummary {
     this.remarks,
   });
 
-  String get areaName => panchayat?.name ?? ward?.name ?? '—';
+  /// Display name for the trip's service area (ward, falling back to
+  /// panchayat for older trips created before ward assignment existed).
+  String get areaName => ward?.name ?? panchayat?.name ?? '—';
 
   bool get isCompleted => status.toLowerCase() == 'completed';
   bool get isInProgress => status.toLowerCase() == 'in progress';

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:dio/dio.dart';
@@ -16,12 +17,15 @@ import '../../../../core/geofence_config.dart';
 import 'package:iwms_citizen_app/data/models/operator_trip_models.dart';
 import 'package:iwms_citizen_app/data/models/vehicle_model.dart';
 import 'package:iwms_citizen_app/data/repositories/operator_trip_repository.dart';
+import 'package:iwms_citizen_app/data/repositories/staff_notification_repository.dart';
+import 'package:iwms_citizen_app/shared/widgets/staff_notifications_screen.dart';
 import '../../../../logic/vehicle_tracking/vehicle_bloc.dart';
 import '../../../../logic/vehicle_tracking/vehicle_event.dart';
 import 'package:iwms_citizen_app/logic/auth/auth_bloc.dart';
 import 'package:iwms_citizen_app/logic/auth/auth_event.dart';
 import 'package:iwms_citizen_app/logic/auth/auth_state.dart';
 import 'package:iwms_citizen_app/core/api_config.dart';
+import 'package:iwms_citizen_app/core/push/push_notification_service.dart';
 import 'package:iwms_citizen_app/core/map/map_style.dart';
 import 'package:iwms_citizen_app/core/ors_service.dart';
 import 'package:iwms_citizen_app/core/network/authorized_dio.dart';
@@ -33,6 +37,7 @@ import 'package:iwms_citizen_app/modules/module2_driver/presentation/theme/drive
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/captain_glass.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/captain_nav_bar.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/driver_header.dart';
+import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/driver_report_actions_sheet.dart';
 import 'package:iwms_citizen_app/modules/module3_operator/presentation/screens/operator_qr_scanner.dart';
 import 'package:iwms_citizen_app/modules/module3_operator/presentation/screens/operator_trip_home_screen.dart'
     show OperatorTripScanScreen;
@@ -165,6 +170,9 @@ class _DriverHomePageState extends State<DriverHomePage> {
   String? _customerError;
   String? _assignmentError;
   String? _tripError;
+  final StaffNotificationRepository _notificationRepository =
+      StaffNotificationRepository();
+  int _unreadNotificationCount = 0;
 
   @override
   void initState() {
@@ -174,10 +182,32 @@ class _DriverHomePageState extends State<DriverHomePage> {
     // Hydrate the persisted Household/Bin collection mode.
     CollectionModeStore.load();
     _tripRepository = getIt<OperatorTripRepository>();
+    unawaited(PushNotificationService.instance.initAndRegister(
+      registerUrl: ApiConfig.registerStaffFcmToken,
+    ));
+    _refreshUnreadNotificationCount();
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _centerOnDriver(GammaGeofenceConfig.center),
     );
     _loadAssignmentsForDriver();
+  }
+
+  Future<void> _refreshUnreadNotificationCount() async {
+    try {
+      final count = await _notificationRepository.fetchUnreadCount();
+      if (!mounted) return;
+      setState(() => _unreadNotificationCount = count);
+    } catch (_) {
+      // Non-fatal — badge just stays at its last known value.
+    }
+  }
+
+  Future<void> _openNotifications() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const StaffNotificationsScreen()),
+    );
+    _refreshUnreadNotificationCount();
   }
 
   VehicleModel? _selectedVehicleFrom(VehicleState state) {
@@ -377,6 +407,9 @@ class _DriverHomePageState extends State<DriverHomePage> {
               onLogout: () => _logout(context),
               onProfileTap: () =>
                   setState(() => _activeTab = _DriverTab.profile),
+              onDangerTap: () => DriverReportActionsSheet.show(context),
+              onNotificationsTap: _openNotifications,
+              unreadNotificationCount: _unreadNotificationCount,
               collapsed: pullInHeader,
               showCollectionModeToggle: showCollectionToggle,
               collectionMode: collectionMode,

@@ -220,6 +220,21 @@ class SupervisorAssignment {
   // from the mobile driver app's crew model so both surfaces stay in sync.
   final OperatorTripCrew? crew;
 
+  /// Total collected weight across every stop (bin + household) on this
+  /// assignment — used by the "Waste X kg" pill on the trip card.
+  double get totalCollectedWeightKg => stops.fold(
+        0.0,
+        (sum, stop) => sum + (stop.collectedWeightKg ?? 0),
+      );
+
+  int get binsTotal => stops.where((s) => !s.isHousehold).length;
+  int get binsCollected =>
+      stops.where((s) => !s.isHousehold && s.isCollected).length;
+
+  int get stopsTotal => stops.where((s) => s.isHousehold).length;
+  int get stopsCollected =>
+      stops.where((s) => s.isHousehold && s.isCollected).length;
+
   bool get isScheduled => status.toUpperCase() == 'SCHEDULED';
   bool get isInProgress => status.toUpperCase() == 'IN_PROGRESS';
   bool get isCompleted => status.toUpperCase() == 'COMPLETED';
@@ -237,7 +252,13 @@ class SupervisorAssignment {
   factory SupervisorAssignment.fromJson(Map<String, dynamic> json) {
     final tripPlan = (json['trip_plan'] as Map?) ?? const {};
     final zone = (json['zone'] as Map?) ?? const {};
-    final ward = (json['ward'] as Map?) ?? const {};
+    // The daily-trip-assignments endpoint returns a trip's wards as a list
+    // (`wards_detail`) — a trip can technically cover more than one ward —
+    // so use the first one for the single-line assignment card display.
+    final wardsDetail = (json['wards_detail'] as List?) ?? const [];
+    final ward = wardsDetail.isNotEmpty && wardsDetail.first is Map
+        ? wardsDetail.first as Map
+        : const {};
     final panchayat = (json['panchayat'] as Map?) ?? const {};
     final wasteType = (json['waste_type'] as Map?) ?? const {};
     final vehicle = (json['vehicle'] as Map?) ?? const {};
@@ -305,18 +326,20 @@ class SupervisorAssignment {
   factory SupervisorAssignment.fromTripLogJson(Map<String, dynamic> json) {
     final tripAssignment = (json['trip_assignment'] as Map?) ?? const {};
     final zone = (tripAssignment['zone'] as Map?) ?? const {};
-    final wards = (json['ward'] as List?) ?? const [];
+    // daily-trip-logs returns the trip's wards as `wards_detail` (a list, same
+    // shape as daily-trip-assignments) and has no nested `panchayat` map of
+    // its own — the local-body/panchayat display name lives in the flat
+    // `location_name` field instead (see DailyTripLogSerializer).
+    final wards = (json['wards_detail'] as List?) ?? const [];
     final ward =
         wards.isNotEmpty && wards.first is Map ? wards.first as Map : const {};
-    final panchayat = (json['panchayat'] as Map?) ?? const {};
+    final locationName = json['location_name']?.toString() ?? '';
     final wasteType = (json['waste_type'] as Map?) ?? const {};
     final vehicle = (json['vehicle'] as Map?) ?? const {};
     final driver = (json['driver'] as Map?) ?? const {};
     final operator = (json['operator'] as Map?) ?? const {};
 
-    final wardName = ward['ward_name']?.toString() ??
-        panchayat['panchayat_name']?.toString() ??
-        '';
+    final wardName = ward['ward_name']?.toString() ?? locationName;
     final zoneName = zone['zone_name']?.toString() ?? '';
 
     final status = _normStatus(
@@ -538,13 +561,18 @@ class SupervisorWastePoint {
     required this.date,
     required this.binKg,
     required this.householdKg,
+    required this.logStatus,
   });
 
   final DateTime date;
   final double binKg;
   final double householdKg;
+  // "Draft" / "Submitted" / "Verified" (DailyTripLog.log_status) — lets the
+  // waste summary cards split collected weight into Verified vs Pending.
+  final String logStatus;
 
   double get totalKg => binKg + householdKg;
+  bool get isVerified => logStatus == 'Verified';
 
   factory SupervisorWastePoint.fromLogJson(Map<String, dynamic> j) {
     return SupervisorWastePoint(
@@ -552,6 +580,7 @@ class SupervisorWastePoint {
           DateTime.fromMillisecondsSinceEpoch(0),
       binKg: _numKg(j['collected_weight_kg']),
       householdKg: _numKg(j['household_collected_weight_kg']),
+      logStatus: _str(j['log_status']),
     );
   }
 
@@ -669,6 +698,8 @@ class SupervisorStaffAttendanceSummary {
 class SupervisorTeam {
   const SupervisorTeam({
     required this.uniqueId,
+    required this.driverId,
+    required this.operatorId,
     required this.driverName,
     required this.operatorName,
     required this.extraCount,
@@ -677,6 +708,8 @@ class SupervisorTeam {
   });
 
   final String uniqueId;
+  final String driverId;
+  final String operatorId;
   final String driverName;
   final String operatorName;
   final int extraCount;
@@ -687,10 +720,79 @@ class SupervisorTeam {
     final extra = j['extra_operator_id'];
     return SupervisorTeam(
       uniqueId: _str(j['unique_id']),
+      driverId: _str(j['driver_id']),
+      operatorId: _str(j['operator_id']),
       driverName: _str(j['driver_name']),
       operatorName: _str(j['operator_name']),
       extraCount: extra is List ? extra.length : 0,
       status: _str(j['status']),
+      approvalStatus: _str(j['approval_status']),
+    );
+  }
+}
+
+/// A driver/operator dropdown option (`staff_unique_id` + display name),
+/// used by the "Substitute staff" / "Form ALT" / "Add team" forms.
+class SupervisorCrewOption {
+  const SupervisorCrewOption({required this.uniqueId, required this.name});
+
+  final String uniqueId;
+  final String name;
+
+  factory SupervisorCrewOption.fromJson(Map<String, dynamic> j) {
+    final uid = _str(j['staff_unique_id']).isNotEmpty
+        ? _str(j['staff_unique_id'])
+        : _str(j['unique_id']);
+    final name = _str(j['employee_name']).isNotEmpty
+        ? _str(j['employee_name'])
+        : _str(j['username']);
+    return SupervisorCrewOption(uniqueId: uid, name: name.isEmpty ? uid : name);
+  }
+}
+
+/// An `AlternativeStaffTemplate` — a staff substitution already created under
+/// the supervisor's hierarchy, selectable to apply onto a trip assignment.
+class SupervisorAltStaffTemplate {
+  const SupervisorAltStaffTemplate({
+    required this.uniqueId,
+    required this.displayCode,
+    required this.staffTemplateId,
+    required this.driverName,
+    required this.operatorName,
+    required this.fromDate,
+    required this.toDate,
+    required this.changeReason,
+    required this.approvalStatus,
+  });
+
+  final String uniqueId;
+  final String displayCode;
+  final String staffTemplateId;
+  final String driverName;
+  final String operatorName;
+  final String fromDate;
+  final String toDate;
+  final String changeReason;
+  final String approvalStatus;
+
+  String get label {
+    final range = [fromDate, toDate].where((v) => v.isNotEmpty).join(' → ');
+    final crew =
+        [driverName, operatorName].where((v) => v.isNotEmpty).join(' / ');
+    final parts = [displayCode, crew, range].where((v) => v.isNotEmpty);
+    return parts.isEmpty ? uniqueId : parts.join(' · ');
+  }
+
+  factory SupervisorAltStaffTemplate.fromJson(Map<String, dynamic> j) {
+    return SupervisorAltStaffTemplate(
+      uniqueId: _str(j['unique_id']),
+      displayCode: _str(j['display_code']),
+      staffTemplateId: _str(j['staff_template']),
+      driverName: _str(j['driver_name']),
+      operatorName: _str(j['operator_name']),
+      fromDate: _str(j['from_date']),
+      toDate: _str(j['to_date']),
+      changeReason: _str(j['change_reason']),
       approvalStatus: _str(j['approval_status']),
     );
   }
@@ -766,6 +868,8 @@ class SupervisorHousehold {
     required this.areaTypeName,
     required this.qrCodeUrl,
     required this.isActive,
+    required this.latitude,
+    required this.longitude,
   });
 
   final String uniqueId;
@@ -779,6 +883,8 @@ class SupervisorHousehold {
   final String areaTypeName;
   final String qrCodeUrl;
   final bool isActive;
+  final String latitude;
+  final String longitude;
 
   String get address {
     final parts = [buildingNo, street, area]
@@ -809,6 +915,8 @@ class SupervisorHousehold {
       areaTypeName: _str(j['area_type_name']),
       qrCodeUrl: _str(j['qr_code']),
       isActive: j['is_active'] == true,
+      latitude: _str(j['latitude']),
+      longitude: _str(j['longitude']),
     );
   }
 }

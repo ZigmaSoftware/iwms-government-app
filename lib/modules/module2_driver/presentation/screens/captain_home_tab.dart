@@ -1047,19 +1047,19 @@ class _QuickActionsRow extends StatelessWidget {
     return Row(
       children: [
         action(
-          iconAsset: 'assets/icons/navigate1.png',
+          iconAsset: 'assets/icons/navigate.png',
           label: 'Navigate',
           onTap: onOpenMap,
         ),
         const SizedBox(width: 10),
         action(
-          iconAsset: 'assets/icons/scan1.png',
+          iconAsset: 'assets/icons/scan.png',
           label: 'Scan',
           onTap: onScan,
         ),
         const SizedBox(width: 10),
         action(
-          iconAsset: 'assets/icons/history11.png',
+          iconAsset: 'assets/icons/history.png',
           label: 'History',
           onTap: onHistory,
         ),
