@@ -3,12 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/data/supervisor_models.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/data/supervisor_repository.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/theme/supervisor_theme.dart';
-import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_alt_staff_template_form.dart';
 
-/// "Substitute staff" — pick an existing `AlternativeStaffTemplate` (created
-/// under the supervisor's hierarchy) and apply it onto [assignmentId], or
-/// create a new one via "Form ALT" first. Pops `true` once a substitution is
-/// successfully applied.
+/// "Substitute staff" — pick an existing staff template under the
+/// supervisor's hierarchy and apply it onto [assignmentId]. The repository
+/// converts it into the temporary substitution payload the backend expects.
 class SupervisorSubstituteStaffSheet extends StatefulWidget {
   const SupervisorSubstituteStaffSheet({super.key, required this.assignmentId});
 
@@ -37,7 +35,7 @@ class _SupervisorSubstituteStaffSheetState
   bool _applying = false;
   String? _applyError;
 
-  List<SupervisorAltStaffTemplate> _templates = const [];
+  List<SupervisorTeam> _templates = const [];
   String? _selectedId;
 
   @override
@@ -52,7 +50,7 @@ class _SupervisorSubstituteStaffSheetState
       _loadError = null;
     });
     try {
-      final templates = await _repo.fetchAlternativeStaffTemplates();
+      final templates = await _repo.fetchTeams();
       if (!mounted) return;
       setState(() {
         _templates = templates;
@@ -71,21 +69,21 @@ class _SupervisorSubstituteStaffSheetState
     }
   }
 
-  Future<void> _createNew() async {
-    final created = await SupervisorAltStaffTemplateForm.show(context);
-    if (created == true) await _load();
-  }
-
   Future<void> _apply() async {
     if (_selectedId == null) return;
+    final selected = _templates
+        .where((template) => template.uniqueId == _selectedId)
+        .cast<SupervisorTeam?>()
+        .firstOrNull;
+    if (selected == null) return;
     setState(() {
       _applying = true;
       _applyError = null;
     });
     try {
-      await _repo.applyAlternativeStaffTemplate(
+      await _repo.applyStaffTemplateSubstitution(
         assignmentId: widget.assignmentId,
-        altStaffTemplateId: _selectedId!,
+        team: selected,
       );
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -186,7 +184,7 @@ class _SupervisorSubstituteStaffSheetState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Alternative staff templates created under your hierarchy:',
+            'Staff templates available under your hierarchy:',
             style: const TextStyle(
               fontSize: 12.5,
               color: SupervisorTheme.mutedText,
@@ -198,9 +196,7 @@ class _SupervisorSubstituteStaffSheetState
             isExpanded: true,
             style: SupervisorTheme.inputTextStyle,
             dropdownColor: SupervisorTheme.surface,
-            decoration: SupervisorTheme.inputDecoration(
-              'Alternative staff template',
-            ),
+            decoration: SupervisorTheme.inputDecoration('Staff template'),
             items: _templates
                 .map((t) => DropdownMenuItem(
                       value: t.uniqueId,
@@ -208,16 +204,6 @@ class _SupervisorSubstituteStaffSheetState
                     ))
                 .toList(),
             onChanged: (v) => setState(() => _selectedId = v),
-          ),
-          const SizedBox(height: 10),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: _createNew,
-              icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
-              label: const Text('Create new'),
-              style: TextButton.styleFrom(foregroundColor: SupervisorTheme.accent),
-            ),
           ),
           if (_applyError != null) ...[
             const SizedBox(height: 10),

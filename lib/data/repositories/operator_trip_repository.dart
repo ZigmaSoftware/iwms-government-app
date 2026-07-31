@@ -27,6 +27,38 @@ class OperatorTripException implements Exception {
 }
 
 class OperatorTripRepository {
+  /// The waste streams saved against this customer in Customer Creation
+  /// (`CustomerCreation.waste_types`), in the backend's display order — Wet,
+  /// then Dry, then the rest alphabetically. Returns an empty list when the
+  /// customer has none saved or the lookup fails, so the caller can simply
+  /// omit the section rather than blocking the action sheet.
+  Future<List<CustomerWasteType>> fetchCustomerWasteTypes(
+    String customerId,
+  ) async {
+    if (customerId.trim().isEmpty) return const [];
+    final dio = await authorizedDio();
+    try {
+      final resp = await dio.get(
+        ApiConfig.customerWasteTypes,
+        queryParameters: {'customer_id': customerId},
+      );
+      final data = resp.data;
+      if (data is! Map || data['status'] != 'success') return const [];
+      final rows = data['data'];
+      if (rows is! List) return const [];
+      return rows
+          .whereType<Map>()
+          .map((e) => CustomerWasteType.fromJson(
+                Map<String, dynamic>.from(e),
+              ))
+          .where((w) => w.name.isNotEmpty)
+          .toList();
+    } on DioException catch (e) {
+      developer.log('fetchCustomerWasteTypes failed: $e');
+      return const [];
+    }
+  }
+
   Future<OperatorTripToday?> fetchMyTripToday() async {
     final dio = await authorizedDio();
     try {

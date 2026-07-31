@@ -5,68 +5,55 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:iwms_citizen_app/core/api_config.dart';
 
+/// OpenRouteService client for the driver map.
+///
+/// Every road-geometry request funnels through [_fetchDirections], which:
+///
+///  * asks ORS for the WHOLE multi-waypoint route in ONE call instead of one
+///    call per segment (an 8-stop route used to cost 8 requests, now 1),
+///  * caches results in memory, so the map rebuilding / the driver location
+///    jittering does not re-buy the same geometry, and
+///  * trips a cooldown breaker on 403/429 so a quota-exhausted key stops being
+///    hammered dozens of times per screen.
+///
+/// ORS's free tier is small (2 000 directions/day, 40/min, and a much tighter
+/// optimization budget), so request count is a correctness concern here, not a
+/// micro-optimisation.
 class ORSService {
   static String get _key => ApiConfig.orsApiKey;
 
+  /// ORS refuses a driving-car route with more waypoints than this in one
+  /// request, so longer routes are split and stitched.
+  static const int _maxWaypointsPerRequest = 50;
+
+  static const Duration _cacheTtl = Duration(minutes: 15);
+
+  /// How long to stop calling ORS after it reports a quota/rate-limit error.
+  /// Without this, one exhausted key produces a 403 for every segment of every
+  /// map rebuild.
+  static const Duration _quotaCooldown = Duration(minutes: 15);
+
+  static final Map<String, _CachedRoute> _cache = <String, _CachedRoute>{};
+  static DateTime? _blockedUntil;
+
+  /// True while the breaker is open (quota exceeded / rate limited recently).
+  static bool get isThrottled =>
+      _blockedUntil != null && DateTime.now().isBefore(_blockedUntil!);
+
+  /// Clears the cache and the cooldown — call after swapping in a new API key.
+  static void reset() {
+    _cache.clear();
+    _blockedUntil = null;
+  }
+
   // ---------------------------------------------------------------------------
-  // SINGLE ROUTE (A → B) - CORE METHOD
+  // SINGLE ROUTE (A → B)
   // ---------------------------------------------------------------------------
   static Future<List<LatLng>> fetchRoute(
     LatLng origin,
     LatLng destination,
-  ) async {
-    final url = Uri.parse(
-      'https://api.openrouteservice.org/v2/directions/driving-car',
-    );
-
-    final body = jsonEncode({
-      "coordinates": [
-        [origin.longitude, origin.latitude],
-        [destination.longitude, destination.latitude],
-      ]
-    });
-
-    try {
-      final resp = await http
-          .post(
-            url,
-            headers: {
-              'Authorization': _key,
-              'Content-Type': 'application/json',
-              'Accept': 'application/json, application/geo+json',
-            },
-            body: body,
-          )
-          .timeout(const Duration(seconds: 15));
-
-      debugPrint('ORS ROUTE STATUS: ${resp.statusCode}');
-
-      if (resp.statusCode != 200) {
-        debugPrint('ORS ROUTE ERROR ${resp.statusCode}: ${resp.body}');
-        return [];
-      }
-
-      // Print the actual response to see structure
-      debugPrint(
-          'ORS RESPONSE BODY: ${resp.body.substring(0, math.min(500, resp.body.length))}...');
-
-      final decoded = jsonDecode(resp.body);
-      final extracted = _extractDirectionsGeometry(decoded);
-
-      debugPrint('ORS ROUTE EXTRACTED POINTS: ${extracted.length}');
-
-      if (extracted.isEmpty) {
-        debugPrint('ORS ROUTE GEOMETRY EMPTY');
-        return [];
-      }
-
-      return extracted;
-    } catch (e, stackTrace) {
-      debugPrint('ORS ROUTE EXCEPTION: $e');
-      debugPrint('STACK: $stackTrace');
-      return [];
-    }
-  }
+  ) =>
+      _fetchDirections([origin, destination]);
 
   // ---------------------------------------------------------------------------
   // MULTI-STOP WRAPPER (for backward compatibility)
@@ -82,12 +69,7 @@ class ORSService {
     final driver = LatLng(coords.first[1], coords.first[0]);
     final stops = coords.skip(1).map((c) => LatLng(c[1], c[0])).toList();
 
-    debugPrint('ORS MULTI: Driver at $driver, ${stops.length} stops');
-
-    return fetchOptimizedMultiRoute(
-      driver: driver,
-      stops: stops,
-    );
+    return fetchOptimizedMultiRoute(driver: driver, stops: stops);
   }
 
   // ---------------------------------------------------------------------------
@@ -97,24 +79,19 @@ class ORSService {
     required LatLng driver,
     required List<LatLng> stops,
   }) async {
-    if (stops.isEmpty) {
-      debugPrint('ORS OPT: No stops provided');
-      return [];
+    if (stops.isEmpty) return [];
+
+    // With a single stop there is nothing to re-order: skip the (scarce)
+    // optimization request entirely.
+    if (stops.length == 1) {
+      return _fetchDirections([driver, stops.first]);
     }
 
-    debugPrint('ORS OPT: Starting with ${stops.length} stops');
-
-    // Try optimization API first
     final optimizedOrder = await _tryOptimization(driver, stops);
-
-    if (optimizedOrder != null && optimizedOrder.isNotEmpty) {
-      debugPrint('ORS OPT: Got optimized order, building polyline...');
-      return _buildPolyline([driver, ...optimizedOrder]);
-    }
-
-    // Fallback: use original order
-    debugPrint('ORS OPT: Optimization failed, using original order');
-    return _buildPolyline([driver, ...stops]);
+    final ordered = (optimizedOrder != null && optimizedOrder.isNotEmpty)
+        ? optimizedOrder
+        : stops;
+    return _fetchDirections([driver, ...ordered]);
   }
 
   // ---------------------------------------------------------------------------
@@ -125,99 +102,110 @@ class ORSService {
     required List<LatLng> stops,
   }) async {
     if (stops.isEmpty) return [];
+    return _fetchDirections([driver, ...stops]);
+  }
 
-    final coords = [
-      [driver.longitude, driver.latitude],
-      ...stops.map((s) => [s.longitude, s.latitude]),
-    ];
+  // ---------------------------------------------------------------------------
+  // DIRECTIONS — the single road-geometry entry point
+  // ---------------------------------------------------------------------------
+  /// Road geometry through [waypoints] in the given order. Returns an empty
+  /// list when ORS is unavailable, so callers keep their own fallback (a
+  /// straight line, or no polyline at all) rather than being handed a fake
+  /// route.
+  static Future<List<LatLng>> _fetchDirections(List<LatLng> waypoints) async {
+    if (waypoints.length < 2) return [];
+
+    final key = _cacheKey('dir', waypoints);
+    final cached = _cache[key];
+    if (cached != null && !cached.isStale) return cached.points;
+
+    // Long routes exceed ORS's per-request waypoint limit: request them in
+    // chunks that share a waypoint, then stitch.
+    final chunks = _chunkWaypoints(waypoints);
+    final out = <LatLng>[];
+    for (final chunk in chunks) {
+      final seg = await _requestDirections(chunk);
+      if (seg.isEmpty) return []; // partial geometry would draw a broken route
+      if (out.isNotEmpty) seg.removeAt(0);
+      out.addAll(seg);
+    }
+
+    _cache[key] = _CachedRoute(out);
+    return out;
+  }
+
+  static List<List<LatLng>> _chunkWaypoints(List<LatLng> waypoints) {
+    if (waypoints.length <= _maxWaypointsPerRequest) return [waypoints];
+    final chunks = <List<LatLng>>[];
+    var start = 0;
+    while (start < waypoints.length - 1) {
+      final end =
+          math.min(start + _maxWaypointsPerRequest, waypoints.length);
+      chunks.add(waypoints.sublist(start, end));
+      start = end - 1; // overlap by one so the legs join
+    }
+    return chunks;
+  }
+
+  static Future<List<LatLng>> _requestDirections(List<LatLng> waypoints) async {
+    final resp = await _post(
+      'https://api.openrouteservice.org/v2/directions/driving-car/geojson',
+      {
+        'coordinates': [
+          for (final p in waypoints) [p.longitude, p.latitude],
+        ],
+      },
+      label: 'ROUTE',
+    );
+    if (resp == null) return [];
 
     try {
-      final resp = await http
-          .post(
-            Uri.parse(
-                'https://api.openrouteservice.org/v2/directions/driving-car/geojson'),
-            headers: {
-              'Authorization': _key,
-              'Content-Type': 'application/json',
-            },
-            body: jsonEncode({"coordinates": coords}),
-          )
-          .timeout(const Duration(seconds: 20));
-
-      if (resp.statusCode != 200) {
-        debugPrint('ORS ROAD ROUTE ERROR ${resp.statusCode}: ${resp.body}');
-        return [];
-      }
-
-      final data = jsonDecode(resp.body);
-      final features = data is Map ? data['features'] : null;
-      if (features is! List || features.isEmpty) return [];
-
-      final geometry = features[0]?['geometry']?['coordinates'];
-      if (geometry is! List || geometry.isEmpty) return [];
-
-      return geometry
-          .map<LatLng>(
-            (c) => LatLng(
-              (c[1] as num).toDouble(),
-              (c[0] as num).toDouble(),
-            ),
-          )
-          .toList();
+      return _extractDirectionsGeometry(jsonDecode(resp));
     } catch (e) {
-      debugPrint('ORS ROAD ROUTE EXCEPTION: $e');
+      debugPrint('ORS ROUTE PARSE ERROR: $e');
       return [];
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // OPTIMIZATION (stop re-sequencing)
+  // ---------------------------------------------------------------------------
   static Future<List<LatLng>?> _tryOptimization(
     LatLng driver,
     List<LatLng> stops,
   ) async {
-    final url = Uri.parse('https://api.openrouteservice.org/optimization');
-
-    final jobs = <Map<String, dynamic>>[];
-    for (int i = 0; i < stops.length; i++) {
-      jobs.add({
-        "id": i + 1,
-        "location": [stops[i].longitude, stops[i].latitude],
-      });
+    final key = _cacheKey('opt', [driver, ...stops]);
+    final cached = _cache[key];
+    if (cached != null && !cached.isStale) {
+      return cached.points.isEmpty ? null : cached.points;
     }
 
-    final body = jsonEncode({
-      "vehicles": [
-        {
-          "id": 1,
-          "profile": "driving-car",
-          "start": [driver.longitude, driver.latitude],
-          "end": [driver.longitude, driver.latitude],
-        }
-      ],
-      "jobs": jobs,
-    });
+    final resp = await _post(
+      'https://api.openrouteservice.org/optimization',
+      {
+        'vehicles': [
+          {
+            'id': 1,
+            'profile': 'driving-car',
+            'start': [driver.longitude, driver.latitude],
+            'end': [driver.longitude, driver.latitude],
+          }
+        ],
+        'jobs': [
+          for (var i = 0; i < stops.length; i++)
+            {
+              'id': i + 1,
+              'location': [stops[i].longitude, stops[i].latitude],
+            },
+        ],
+      },
+      label: 'OPT',
+    );
+    if (resp == null) return null;
 
     try {
-      final resp = await http
-          .post(
-            url,
-            headers: {
-              'Authorization': _key,
-              'Content-Type': 'application/json',
-            },
-            body: body,
-          )
-          .timeout(const Duration(seconds: 20));
-
-      debugPrint('ORS OPT STATUS: ${resp.statusCode}');
-
-      if (resp.statusCode != 200) {
-        debugPrint('ORS OPT ERROR ${resp.statusCode}: ${resp.body}');
-        return null;
-      }
-
-      final json = jsonDecode(resp.body);
+      final json = jsonDecode(resp);
       final steps = json['routes']?[0]?['steps'];
-
       if (steps is! List || steps.isEmpty) {
         debugPrint('ORS OPT: Invalid or empty steps');
         return null;
@@ -225,127 +213,113 @@ class ORSService {
 
       final ordered = <LatLng>[];
       for (final s in steps) {
-        if (s['type'] == 'job') {
-          final loc = s['location'];
-          if (loc is List && loc.length == 2) {
-            ordered.add(LatLng(
-              (loc[1] as num).toDouble(),
-              (loc[0] as num).toDouble(),
-            ));
-          }
+        if (s['type'] != 'job') continue;
+        final loc = s['location'];
+        if (loc is List && loc.length == 2) {
+          ordered.add(
+            LatLng((loc[1] as num).toDouble(), (loc[0] as num).toDouble()),
+          );
         }
       }
+      if (ordered.isEmpty) return null;
 
-      debugPrint('ORS OPT: Extracted ${ordered.length} ordered stops');
-      return ordered.isEmpty ? null : ordered;
+      // Cached so a map rebuild reuses the order instead of spending another
+      // optimization request (the scarcest ORS budget of the three).
+      _cache[key] = _CachedRoute(ordered);
+      return ordered;
     } catch (e) {
-      debugPrint('ORS OPT EXCEPTION: $e');
+      debugPrint('ORS OPT PARSE ERROR: $e');
       return null;
     }
   }
 
   // ---------------------------------------------------------------------------
-  // BUILD POLYLINE FROM WAYPOINTS
+  // HTTP with quota breaker
   // ---------------------------------------------------------------------------
-  static Future<List<LatLng>> _buildPolyline(List<LatLng> points) async {
-    if (points.length < 2) {
-      debugPrint('POLYLINE: Not enough points');
-      return points;
-    }
+  /// POSTs [body] to [url], returning the response body, or null on any
+  /// failure. A 403/429 opens the cooldown breaker so the rest of this screen's
+  /// requests short-circuit instead of piling up more rejected calls.
+  static Future<String?> _post(
+    String url,
+    Map<String, dynamic> body, {
+    required String label,
+  }) async {
+    if (isThrottled) return null;
 
-    debugPrint('POLYLINE: Building route through ${points.length} waypoints');
-    final out = <LatLng>[];
+    try {
+      final resp = await http
+          .post(
+            Uri.parse(url),
+            headers: {
+              'Authorization': _key,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json, application/geo+json',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 20));
 
-    for (int i = 0; i < points.length - 1; i++) {
-      debugPrint('POLYLINE: Segment $i -> ${i + 1}');
-      final seg = await fetchRoute(points[i], points[i + 1]);
+      if (resp.statusCode == 200) return resp.body;
 
-      if (seg.isNotEmpty) {
-        // Avoid duplicating connection points
-        if (out.isNotEmpty && seg.isNotEmpty) {
-          seg.removeAt(0);
-        }
-        out.addAll(seg);
-      } else {
-        debugPrint('POLYLINE: Segment $i failed, skipping');
+      if (resp.statusCode == 403 || resp.statusCode == 429) {
+        _blockedUntil = DateTime.now().add(_quotaCooldown);
+        debugPrint(
+          'ORS $label ${resp.statusCode}: quota/rate limit hit — pausing ORS '
+          'calls for ${_quotaCooldown.inMinutes} min. ${resp.body}',
+        );
+        return null;
       }
-    }
 
-    debugPrint('POLYLINE: Final route has ${out.length} points');
-    return out;
+      debugPrint('ORS $label ERROR ${resp.statusCode}: ${resp.body}');
+      return null;
+    } catch (e) {
+      debugPrint('ORS $label EXCEPTION: $e');
+      return null;
+    }
+  }
+
+  static String _cacheKey(String kind, List<LatLng> points) {
+    // 5 decimal places ≈ 1 m: enough to dedupe GPS jitter that would otherwise
+    // miss the cache on every location tick.
+    final parts = points
+        .map((p) => '${p.latitude.toStringAsFixed(5)},'
+            '${p.longitude.toStringAsFixed(5)}')
+        .join(';');
+    return '$kind|$parts';
   }
 
   // ---------------------------------------------------------------------------
-  // EXTRACT GEOMETRY FROM ORS RESPONSE - FIXED VERSION
+  // EXTRACT GEOMETRY FROM ORS RESPONSE
   // ---------------------------------------------------------------------------
   static List<LatLng> _extractDirectionsGeometry(dynamic json) {
+    List<LatLng> fromCoords(List coords) => coords
+        .whereType<List>()
+        .map((c) => LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()))
+        .toList();
+
     try {
-      debugPrint('GEOMETRY PARSING: Checking response structure...');
+      // GeoJSON shape: { features: [ { geometry: { coordinates: [...] } } ] }
+      final features = json['features'];
+      if (features is List && features.isNotEmpty) {
+        final coords = features[0]?['geometry']?['coordinates'];
+        if (coords is List && coords.isNotEmpty) return fromCoords(coords);
+      }
 
-      // ORS v2 API returns: { features: [...], routes: [...] }
-      // We need to check both possible structures
-
-      // Try GeoJSON format first (features)
-      if (json['features'] != null && json['features'] is List) {
-        final features = json['features'] as List;
-        debugPrint(
-            'GEOMETRY: Found features array with ${features.length} items');
-
-        if (features.isNotEmpty) {
-          final firstFeature = features[0];
-          final coords = firstFeature['geometry']?['coordinates'];
-
-          if (coords is List && coords.isNotEmpty) {
-            debugPrint(
-                'GEOMETRY: Extracting from features[0].geometry.coordinates');
-            return coords
-                .map((c) => LatLng(
-                      (c[1] as num).toDouble(),
-                      (c[0] as num).toDouble(),
-                    ))
-                .toList();
-          }
+      // JSON shape: { routes: [ { geometry: <encoded polyline | object> } ] }
+      final routes = json['routes'];
+      if (routes is List && routes.isNotEmpty) {
+        final geometry = routes[0]?['geometry'];
+        if (geometry is String) return decodePolyline(geometry);
+        if (geometry is Map) {
+          final coords = geometry['coordinates'];
+          if (coords is List && coords.isNotEmpty) return fromCoords(coords);
         }
       }
 
-      // Try routes format (alternative structure)
-      if (json['routes'] != null && json['routes'] is List) {
-        final routes = json['routes'] as List;
-        debugPrint('GEOMETRY: Found routes array with ${routes.length} items');
-
-        if (routes.isNotEmpty) {
-          final firstRoute = routes[0];
-
-          // Check for encoded polyline
-          if (firstRoute['geometry'] is String) {
-            debugPrint('GEOMETRY: Found encoded polyline string');
-            final encoded = firstRoute['geometry'] as String;
-            return decodePolyline(encoded);
-          }
-
-          // Check for geometry object
-          if (firstRoute['geometry'] is Map) {
-            final coords = firstRoute['geometry']['coordinates'];
-            if (coords is List && coords.isNotEmpty) {
-              debugPrint(
-                  'GEOMETRY: Extracting from routes[0].geometry.coordinates');
-              return coords
-                  .map((c) => LatLng(
-                        (c[1] as num).toDouble(),
-                        (c[0] as num).toDouble(),
-                      ))
-                  .toList();
-            }
-          }
-        }
-      }
-
-      debugPrint('GEOMETRY: No valid coordinates found in response');
-      debugPrint('GEOMETRY: Available keys: ${json.keys.toList()}');
+      debugPrint('ORS ROUTE: no geometry in response');
       return [];
-    } catch (e, stackTrace) {
-      debugPrint('GEOMETRY PARSE ERROR: $e');
-      debugPrint('STACK: $stackTrace');
+    } catch (e) {
+      debugPrint('ORS GEOMETRY PARSE ERROR: $e');
       return [];
     }
   }
@@ -388,7 +362,6 @@ class ORSService {
       points.add(LatLng(lat / 1e5, lng / 1e5));
     }
 
-    debugPrint('POLYLINE DECODED: ${points.length} points');
     return points;
   }
 
@@ -409,4 +382,14 @@ class ORSService {
 
   static double _degToRad(double d) => d * math.pi / 180;
   static double _radToDeg(double r) => r * 180 / math.pi;
+}
+
+class _CachedRoute {
+  _CachedRoute(this.points) : fetchedAt = DateTime.now();
+
+  final List<LatLng> points;
+  final DateTime fetchedAt;
+
+  bool get isStale =>
+      DateTime.now().difference(fetchedAt) > ORSService._cacheTtl;
 }

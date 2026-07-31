@@ -258,9 +258,61 @@ class _GrievanceStatusScreenState extends State<GrievanceStatusScreen> {
   }
 }
 
-class _DetailSheet extends StatelessWidget {
+class _DetailSheet extends StatefulWidget {
   final GrievanceTicket ticket;
   const _DetailSheet({required this.ticket});
+
+  @override
+  State<_DetailSheet> createState() => _DetailSheetState();
+}
+
+class _DetailSheetState extends State<_DetailSheet> {
+  final _repo = CitizenGrievanceRepository();
+  final _feedbackController = TextEditingController();
+  int _rating = 0;
+  bool _issueSolved = true;
+  bool _submitting = false;
+  bool _submitted = false;
+
+  GrievanceTicket get ticket => widget.ticket;
+
+  @override
+  void dispose() {
+    _feedbackController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submitFeedback() async {
+    if (_rating == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please pick a star rating first.')),
+      );
+      return;
+    }
+    setState(() => _submitting = true);
+    try {
+      await _repo.submitFeedback(
+        uniqueId: ticket.uniqueId,
+        rating: _rating,
+        feedbackText: _feedbackController.text.trim(),
+        isIssueSolved: _issueSolved,
+      );
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _submitted = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Thanks for your feedback!')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not submit feedback. Please try again.')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -330,7 +382,105 @@ class _DetailSheet extends StatelessWidget {
             Text('No updates yet.', style: TextStyle(color: Colors.grey.shade500))
           else
             ...ticket.timeline.map((e) => _timelineTile(e)),
+          if (ticket.isFinal) ...[
+            const SizedBox(height: 20),
+            _feedbackSection(),
+          ],
           const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  Widget _feedbackSection() {
+    if (_submitted) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.green.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.green.shade200),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green.shade700),
+            const SizedBox(width: 10),
+            const Expanded(child: Text('Thanks — your feedback was recorded.')),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Rate this resolution',
+              style: TextStyle(
+                  fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              for (var i = 1; i <= 5; i++)
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  icon: Icon(
+                    i <= _rating ? Icons.star_rounded : Icons.star_outline_rounded,
+                    color: Colors.amber.shade700,
+                    size: 32,
+                  ),
+                  onPressed: () => setState(() => _rating = i),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            value: _issueSolved,
+            onChanged: (v) => setState(() => _issueSolved = v),
+            title: const Text('Was the issue actually resolved?',
+                style: TextStyle(fontSize: 13.5)),
+          ),
+          TextField(
+            controller: _feedbackController,
+            minLines: 2,
+            maxLines: 4,
+            decoration: InputDecoration(
+              hintText: 'Anything else you\'d like to add? (optional)',
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: _submitting ? null : _submitFeedback,
+              style: FilledButton.styleFrom(backgroundColor: CitizenColors.primary),
+              child: _submitting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Submit feedback'),
+            ),
+          ),
         ],
       ),
     );

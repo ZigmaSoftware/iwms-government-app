@@ -68,41 +68,47 @@ class SupervisorTimeChip extends StatelessWidget {
                   selected ? SupervisorTheme.primary : SupervisorTheme.hairline,
             ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: selected ? Colors.white : SupervisorTheme.strongText,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  height: 1,
-                ),
-              ),
-              if (badgeCount > 0) ...[
-                const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  constraints: const BoxConstraints(minWidth: 18),
-                  decoration: BoxDecoration(
-                    color: selected ? Colors.white : SupervisorTheme.danger,
-                    borderRadius: BorderRadius.circular(999),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  style: TextStyle(
+                    color: selected ? Colors.white : SupervisorTheme.strongText,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    height: 1,
                   ),
-                  child: Text(
-                    badgeCount > 9 ? '9+' : '$badgeCount',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: selected ? SupervisorTheme.primary : Colors.white,
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w800,
-                      height: 1.2,
+                ),
+                if (badgeCount > 0) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    constraints: const BoxConstraints(minWidth: 18),
+                    decoration: BoxDecoration(
+                      color: selected ? Colors.white : SupervisorTheme.danger,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      badgeCount > 9 ? '9+' : '$badgeCount',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color:
+                            selected ? SupervisorTheme.primary : Colors.white,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w800,
+                        height: 1.2,
+                      ),
                     ),
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

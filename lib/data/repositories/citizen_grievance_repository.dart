@@ -40,6 +40,32 @@ class CitizenGrievanceRepository {
     return GrievanceTicket.fromJson(resp.data as Map<String, dynamic>);
   }
 
+  /// Rate a resolved/closed ticket. The backend upserts by ticket, so calling
+  /// this again on the same ticket revises the citizen's earlier feedback
+  /// rather than erroring.
+  Future<void> submitFeedback({
+    required String uniqueId,
+    required int rating,
+    String? feedbackText,
+    bool isIssueSolved = false,
+  }) async {
+    final dio = await authorizedDio();
+    try {
+      await dio.post(
+        '${ApiConfig.citizenGrievanceTickets}$uniqueId/feedback/',
+        data: {
+          'rating': rating,
+          if (feedbackText != null && feedbackText.isNotEmpty)
+            'feedback_text': feedbackText,
+          'is_issue_solved': isIssueSolved,
+        },
+      );
+    } on DioException catch (e) {
+      debugPrint('❌ submitFeedback failed: ${e.response?.statusCode} ${e.response?.data}');
+      rethrow;
+    }
+  }
+
   /// Raise a new grievance. Returns the created ticket (with timeline).
   Future<GrievanceTicket> createTicket({
     required String categoryId,

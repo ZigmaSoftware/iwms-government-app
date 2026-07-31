@@ -344,8 +344,7 @@ class SupervisorRepository {
   }
 
   /// Alternative staff templates already created under this supervisor's
-  /// hierarchy (backend scopes the list automatically) — the "Substitute
-  /// staff" dropdown.
+  /// hierarchy (backend scopes the list automatically).
   Future<List<SupervisorAltStaffTemplate>> fetchAlternativeStaffTemplates() async {
     try {
       final dio = await authorizedDio();
@@ -405,6 +404,47 @@ class SupervisorRepository {
       await dio.patch(
         '$_assignments$assignmentId/',
         data: {'alt_staff_template_id': altStaffTemplateId},
+      );
+    } on DioException catch (e) {
+      throw SupervisorException(_message(e));
+    } catch (e) {
+      throw SupervisorException(e.toString());
+    }
+  }
+
+  /// Supervisor mobile now chooses a normal staff template for substitution.
+  /// The backend still applies substitutions through
+  /// `alt_staff_template_id`, so create a same-day temporary alternative
+  /// template from the selected team, then attach it to the assignment.
+  Future<void> applyStaffTemplateSubstitution({
+    required String assignmentId,
+    required SupervisorTeam team,
+  }) async {
+    try {
+      final dio = await authorizedDio();
+      final today = _formatDate(DateTime.now());
+      final created = await dio.post(_alternativeStaffTemplates, data: {
+        'staff_template': team.uniqueId,
+        'driver': team.driverId,
+        'operator': team.operatorId,
+        'extra_operator': team.extraOperatorIds,
+        'from_date': today,
+        'to_date': today,
+        'change_reason': 'Supervisor mobile substitution',
+        'change_remarks': 'Created from selected staff template in mobile app',
+      });
+
+      final body = created.data;
+      final altId = body is Map<String, dynamic>
+          ? body['unique_id']?.toString() ?? ''
+          : '';
+      if (altId.isEmpty) {
+        throw SupervisorException('Substitution template was not returned.');
+      }
+
+      await dio.patch(
+        '$_assignments$assignmentId/',
+        data: {'alt_staff_template_id': altId},
       );
     } on DioException catch (e) {
       throw SupervisorException(_message(e));

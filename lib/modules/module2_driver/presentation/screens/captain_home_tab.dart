@@ -9,6 +9,7 @@ import 'package:iwms_citizen_app/data/models/operator_trip_models.dart';
 import 'package:iwms_citizen_app/data/repositories/operator_trip_repository.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/theme/captain_theme.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/screens/operator_trip_history_screen.dart';
+import 'package:iwms_citizen_app/modules/module2_driver/presentation/state/trip_sequence.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/household_action_sheet.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/bin_detail_sheet.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/captain_glass.dart';
@@ -155,6 +156,10 @@ class _CaptainHomeTabState extends State<CaptainHomeTab> {
     // First build: seed the identity tracker used by didUpdateWidget above.
     _selectedTripId ??= t.assignmentUniqueId;
 
+    final blockers = tripBlockers(trips);
+    final blocker = blockers[t.assignmentUniqueId];
+    final locked = blocker != null;
+
     final bottomSafeArea = MediaQuery.viewPaddingOf(context).bottom;
 
     return RefreshIndicator(
@@ -170,6 +175,7 @@ class _CaptainHomeTabState extends State<CaptainHomeTab> {
             _buildTripCarousel(
               trips: trips,
               selected: selected,
+              blockers: blockers,
             )
           else
             _TripHeroCard(
@@ -179,7 +185,9 @@ class _CaptainHomeTabState extends State<CaptainHomeTab> {
           const SizedBox(height: 12),
           _QuickActionsRow(
             onOpenMap: () => widget.onOpenMap(t),
-            onScan: widget.onScan,
+            // Scanning a locked trip's bin is rejected by the backend
+            // (TRIP_LOCKED), so don't offer the scanner for it at all.
+            onScan: locked ? null : widget.onScan,
             onHistory: widget.onOpenTrips ??
                 () => Navigator.of(context).push(
                       MaterialPageRoute(
@@ -188,24 +196,36 @@ class _CaptainHomeTabState extends State<CaptainHomeTab> {
                     ),
           ),
           const SizedBox(height: 16),
+          if (locked) ...[
+            _LockedTripBanner(blocker: blocker),
+            const SizedBox(height: 16),
+          ],
           // Household / bulk trips collect customers directly (no bins), so
           // show the household list instead of the bin route + collection points.
           if (t.isHousehold) ...[
             _SectionTitle(
               title: 'Households',
-              trailing: '${t.progress.collected}/${t.progress.total} done',
+              trailing: '${t.progress.resolved}/${t.progress.total} done',
             ),
             const SizedBox(height: 10),
-            _HouseholdTimeline(trip: t, onChanged: widget.onRefresh),
+            _HouseholdTimeline(
+              trip: t,
+              onChanged: widget.onRefresh,
+              locked: locked,
+            ),
           ] else ...[
             CollectionProgressMeter(collectionPoints: t.collectionPoints),
             const SizedBox(height: 16),
             _SectionTitle(
               title: 'Collection points',
-              trailing: '${t.progress.collected}/${t.progress.total} done',
+              trailing: '${t.progress.resolved}/${t.progress.total} done',
             ),
             const SizedBox(height: 10),
-            _StopsTimeline(trip: t, onChanged: widget.onRefresh),
+            _StopsTimeline(
+              trip: t,
+              onChanged: widget.onRefresh,
+              locked: locked,
+            ),
           ],
         ],
       ),
@@ -220,6 +240,7 @@ class _CaptainHomeTabState extends State<CaptainHomeTab> {
   Widget _buildTripCarousel({
     required List<OperatorTripToday> trips,
     required int selected,
+    required Map<String, TripBlocker> blockers,
   }) {
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -254,6 +275,12 @@ class _CaptainHomeTabState extends State<CaptainHomeTab> {
                         child: _TripHeroCard(
                           trip: trips[index],
                           onOpenMap: () => widget.onOpenMap(trips[index]),
+                          blocker:
+                              blockers[trips[index].assignmentUniqueId],
+                          // Position within the whole day's carousel, so the
+                          // card can label itself "Trip 2 of 3".
+                          index: index,
+                          total: trips.length,
                         ),
                       ),
                       if (index != trips.length - 1) const SizedBox(width: gap),
@@ -646,14 +673,172 @@ class _CollectionBadgeStyle {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Sequential-trip lock
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Luminance-preserving greyscale (Rec. 601 weights). Drains a locked trip's
+/// colour without darkening it, so it stays readable in both themes.
+const List<double> _greyscaleMatrix = <double>[
+  0.2126, 0.7152, 0.0722, 0, 0, //
+  0.2126, 0.7152, 0.0722, 0, 0, //
+  0.2126, 0.7152, 0.0722, 0, 0, //
+  0, 0, 0, 1, 0, //
+];
+
+/// Greys out and disables anything belonging to a locked trip — the stop list,
+/// the household list. Same treatment as the locked trip card, so the whole
+/// screen reads as one state rather than a card that disagrees with its list.
+class _LockedContent extends StatelessWidget {
+  const _LockedContent({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Opacity(
+        opacity: 0.5,
+        child: ColorFiltered(
+          colorFilter: const ColorFilter.matrix(_greyscaleMatrix),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// The padlock badge floated over a locked trip card.
+class _LockChip extends StatelessWidget {
+  const _LockChip({required this.blocker});
+
+  final TripBlocker blocker;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: CaptainTheme.strongText.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.lock_outline_rounded,
+            size: 15,
+            color: CaptainTheme.surface,
+          ),
+          const SizedBox(width: 7),
+          Text(
+            'Locked',
+            style: TextStyle(
+              color: CaptainTheme.surface,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Full-width explainer under the quick actions when the SELECTED trip is
+/// locked. The chip on the card says *that* it's locked; this says *why* and
+/// what to do about it.
+class _LockedTripBanner extends StatelessWidget {
+  const _LockedTripBanner({required this.blocker});
+
+  final TripBlocker blocker;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = blocker.blockedBy.progress;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: CaptainTheme.goldSoft,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: CaptainTheme.gold.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.lock_clock_rounded, size: 19, color: CaptainTheme.gold),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'This trip is not open yet',
+                  style: TextStyle(
+                    color: CaptainTheme.strongText,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13.5,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  blocker.message,
+                  style: TextStyle(
+                    color: CaptainTheme.mutedText,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12.5,
+                    height: 1.35,
+                  ),
+                ),
+                if (progress.total > 0) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '${progress.resolved} of ${progress.total} stops done on that trip',
+                    style: TextStyle(
+                      color: CaptainTheme.gold,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Hero trip card
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _TripHeroCard extends StatelessWidget {
-  const _TripHeroCard({required this.trip, required this.onOpenMap});
+  const _TripHeroCard({
+    required this.trip,
+    required this.onOpenMap,
+    this.blocker,
+    this.index,
+    this.total,
+  });
 
   final OperatorTripToday trip;
   final VoidCallback onOpenMap;
+
+  /// Non-null when an earlier same-type trip has to be finished first. The card
+  /// then renders desaturated behind a lock chip and stops opening the map —
+  /// there is nothing on it the driver can act on yet.
+  final TripBlocker? blocker;
+
+  /// Position in the day's carousel, for the "Trip 2 of 3" counter. Omitted
+  /// when the card is shown on its own.
+  final int? index;
+  final int? total;
+
+  bool get _locked => blocker != null;
 
   Color get _statusColor {
     switch (trip.status.toLowerCase()) {
@@ -692,6 +877,35 @@ class _TripHeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final card = _buildCard(context);
+    if (!_locked) return card;
+
+    // Locked: drain the colour so the live card next to it is unmistakably the
+    // one to work on, and swallow taps (IgnorePointer) so the map/crew actions
+    // inside can't be reached. Opacity is applied on top of the greyscale so the
+    // card still reads as "yours, later" rather than "disabled forever".
+    return Semantics(
+      label: 'Locked trip. ${blocker!.message}',
+      child: Stack(
+        children: [
+          IgnorePointer(
+            child: Opacity(
+              opacity: 0.55,
+              child: ColorFiltered(
+                colorFilter: const ColorFilter.matrix(_greyscaleMatrix),
+                child: card,
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: Center(child: _LockChip(blocker: blocker!)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCard(BuildContext context) {
     final progress = trip.progress;
 
     return LayoutBuilder(
@@ -752,8 +966,12 @@ class _TripHeroCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    DateFormat(narrow ? 'd MMM' : 'EEE, d MMM')
-                        .format(trip.tripDate),
+                    // With several trips in a day the date alone doesn't say
+                    // which card you're on; the counter does.
+                    (index != null && total != null && total! > 1)
+                        ? 'Trip ${index! + 1} of $total'
+                        : DateFormat(narrow ? 'd MMM' : 'EEE, d MMM')
+                            .format(trip.tripDate),
                     maxLines: 1,
                     softWrap: false,
                     overflow: TextOverflow.fade,
@@ -820,9 +1038,9 @@ class _TripHeroCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   _CompactTripProgress(
-                    fraction: progress.fraction,
+                    fraction: progress.resolvedFraction,
                     completed: progress.completed,
-                    label: '${progress.collected}/${progress.total}',
+                    label: '${progress.resolved}/${progress.total}',
                     size: ringSize,
                   ),
                 ],
@@ -1003,7 +1221,10 @@ class _QuickActionsRow extends StatelessWidget {
   });
 
   final VoidCallback onOpenMap;
-  final VoidCallback onScan;
+
+  /// Null when the selected trip is locked — the scanner is dimmed rather than
+  /// removed, so the row keeps its shape and the driver sees the action exists.
+  final VoidCallback? onScan;
   final VoidCallback onHistory;
 
   @override
@@ -1011,33 +1232,37 @@ class _QuickActionsRow extends StatelessWidget {
     Widget action({
       required String iconAsset,
       required String label,
-      required VoidCallback onTap,
+      required VoidCallback? onTap,
     }) {
+      final disabled = onTap == null;
       return Expanded(
         child: InkWell(
           onTap: onTap,
           borderRadius: const BorderRadius.all(Radius.circular(16)),
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Image.asset(
-                  iconAsset,
-                  width: 76,
-                  height: 76,
-                  fit: BoxFit.contain,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    color: CaptainTheme.strongText,
+            child: Opacity(
+              opacity: disabled ? 0.4 : 1,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.asset(
+                    iconAsset,
+                    width: 76,
+                    height: 76,
+                    fit: BoxFit.contain,
                   ),
-                ),
-              ],
+                  const SizedBox(height: 6),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: CaptainTheme.strongText,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1073,13 +1298,26 @@ class _QuickActionsRow extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _StopsTimeline extends StatelessWidget {
-  const _StopsTimeline({required this.trip, required this.onChanged});
+  const _StopsTimeline({
+    required this.trip,
+    required this.onChanged,
+    this.locked = false,
+  });
 
   final OperatorTripToday trip;
   final Future<void> Function() onChanged;
 
+  /// The stops still render when the trip is locked — the driver can see what
+  /// is coming — but greyed and inert, matching the trip card above.
+  final bool locked;
+
   @override
   Widget build(BuildContext context) {
+    final timeline = _buildTimeline(context);
+    return locked ? _LockedContent(child: timeline) : timeline;
+  }
+
+  Widget _buildTimeline(BuildContext context) {
     final stops = [...trip.collectionPoints]
       ..sort((a, b) => a.sequence.compareTo(b.sequence));
     if (stops.isEmpty) {
@@ -1387,13 +1625,26 @@ enum _StopTone {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _HouseholdTimeline extends StatelessWidget {
-  const _HouseholdTimeline({required this.trip, required this.onChanged});
+  const _HouseholdTimeline({
+    required this.trip,
+    required this.onChanged,
+    this.locked = false,
+  });
 
   final OperatorTripToday trip;
   final Future<void> Function() onChanged;
 
+  /// See [_StopsTimeline.locked] — visible but inert while an earlier same-type
+  /// trip is still open.
+  final bool locked;
+
   @override
   Widget build(BuildContext context) {
+    final timeline = _buildTimeline(context);
+    return locked ? _LockedContent(child: timeline) : timeline;
+  }
+
+  Widget _buildTimeline(BuildContext context) {
     final stops = [...trip.householdCollections]
       ..sort((a, b) => a.sequence.compareTo(b.sequence));
     if (stops.isEmpty) {

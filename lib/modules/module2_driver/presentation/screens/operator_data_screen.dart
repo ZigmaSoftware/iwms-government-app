@@ -86,10 +86,8 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
   final Map<String, GlobalKey> _wasteSectionKeys = {};
   final DateTime _sessionStartedAt = DateTime.now();
   bool _loadingContextDetails = false;
-  String _customerPhone = '';
   String _customerAddress = '';
   String _collectionArea = '';
-  String _assignmentLabel = '';
   String _scheduledCollectionTime = '';
   String _collectionDateLabel = '';
 
@@ -197,10 +195,8 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
   Future<void> _loadCollectionContext() async {
     _safeSetState(() => _loadingContextDetails = true);
 
-    var phone = widget.contactNo.trim();
     var address = '';
     var area = '';
-    var assignment = '';
     var scheduledTime = '';
     var collectionDate = DateFormat('dd MMM yyyy').format(_sessionStartedAt);
 
@@ -216,8 +212,6 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
           final data = payload['data'];
           if (data is Map) {
             final customer = Map<String, dynamic>.from(data);
-            final fetchedPhone = _stringify(customer['contact_no']);
-            if (fetchedPhone.isNotEmpty) phone = fetchedPhone;
             final fetchedAddress = _normalizeAddress(customer);
             if (fetchedAddress.isNotEmpty) address = fetchedAddress;
           }
@@ -249,15 +243,6 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
                       assignmentMap['area_name'],
                 );
 
-          assignment = _readDisplayName(assignmentMap['trip_plan']);
-          assignment = assignment.isNotEmpty
-              ? assignment
-              : _stringify(
-                  assignmentMap['assignment_name'] ??
-                      assignmentMap['display_code'] ??
-                      assignmentMap['unique_id'],
-                );
-
           scheduledTime = _formatClock(
             _stringify(assignmentMap['scheduled_time']),
             fallback: DateFormat('hh:mm a').format(_sessionStartedAt),
@@ -269,10 +254,8 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
     }
 
     _safeSetState(() {
-      _customerPhone = phone;
       _customerAddress = address;
       _collectionArea = area;
-      _assignmentLabel = assignment;
       _scheduledCollectionTime = scheduledTime;
       _collectionDateLabel = collectionDate;
       _loadingContextDetails = false;
@@ -856,26 +839,36 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
       final result =
           json.decode((await http.Response.fromStream(response)).body);
 
-      if (result['status'] == 'success') {
-        await _recordCollectionHistory(totalWeight);
-        _collectionSubmitted = true;
-        if (widget.assignmentId != null &&
-            widget.assignmentId!.trim().isNotEmpty) {
-          await AssignmentStatusStore.setStatusForAssignment(
-            widget.assignmentId!,
-            widget.customerId,
-            'collected',
-          );
-          await syncLog('collection_completed');
-          await _maybeCompleteAssignmentFromStore(widget.assignmentId!);
-        }
-        await _showSuccessSheet(totalWeight, summary);
-        _resetUI();
-        // Fetch types again just in case, but keep defaults if fail
-        _fetchWasteTypes();
-      } else {
-        throw Exception(result['message']);
+      if (result['status'] != 'success') {
+        // The server ANSWERED and refused (e.g. "No waste records found" when
+        // nothing was saved). That is a business rejection, not a connectivity
+        // problem — queueing it as an offline finalize would mark the household
+        // collected on a request the server has already rejected. Surface it and
+        // leave the visit open.
+        if (!mounted) return;
+        AppFlash.warning(
+          context,
+          result['message']?.toString() ?? 'Could not submit this collection',
+        );
+        return;
       }
+
+      await _recordCollectionHistory(totalWeight);
+      _collectionSubmitted = true;
+      if (widget.assignmentId != null &&
+          widget.assignmentId!.trim().isNotEmpty) {
+        await AssignmentStatusStore.setStatusForAssignment(
+          widget.assignmentId!,
+          widget.customerId,
+          'collected',
+        );
+        await syncLog('collection_completed');
+        await _maybeCompleteAssignmentFromStore(widget.assignmentId!);
+      }
+      await _showSuccessSheet(totalWeight, summary);
+      _resetUI();
+      // Fetch types again just in case, but keep defaults if fail
+      _fetchWasteTypes();
     } catch (e) {
       debugPrint("⚠️ Finalize failed, storing offline: $e");
 
@@ -1189,21 +1182,21 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
     final timeLabel = _scheduledCollectionTime.isNotEmpty
         ? _scheduledCollectionTime
         : DateFormat('hh:mm a').format(_sessionStartedAt);
-    final phone = _customerPhone.isNotEmpty ? _customerPhone : widget.contactNo;
+    // Date + time were two separate pills; a collection only ever has one
+    // schedule, so one pill says as much in half the space. The customer's
+    // phone number is deliberately never shown here (or anywhere else in the
+    // driver app) — the internal assignment reference was dropped too, as
+    // pure noise the driver never acts on.
+    final scheduleLabel = '$dateLabel · $timeLabel';
     final details = <Widget>[
-      _detailPill(Icons.phone_outlined, 'Phone', phone),
-      _detailPill(Icons.calendar_today_outlined, 'Date', dateLabel),
-      _detailPill(Icons.schedule_outlined, 'Time', timeLabel),
       if (_collectionArea.isNotEmpty)
         _detailPill(Icons.location_city_outlined, 'Ward', _collectionArea),
-      if (_assignmentLabel.isNotEmpty)
-        _detailPill(Icons.assignment_outlined, 'Assignment', _assignmentLabel),
       _detailPill(Icons.badge_outlined, 'Customer ID', widget.customerId),
     ];
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: CaptainTheme.surface,
         borderRadius: CaptainTheme.cardRadius,
@@ -1216,19 +1209,19 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
           Row(
             children: [
               Container(
-                width: 42,
-                height: 42,
+                width: 38,
+                height: 38,
                 decoration: BoxDecoration(
                   color: CaptainTheme.accentSoft,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(11),
                 ),
                 child: Icon(
                   Icons.home_work_outlined,
                   color: CaptainTheme.accent,
-                  size: 22,
+                  size: 20,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1244,7 +1237,7 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 1),
                     Text(
                       _loadingContextDetails
                           ? 'Loading assignment details...'
@@ -1261,14 +1254,17 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
+          _detailPill(Icons.event_outlined, 'Schedule', scheduleLabel,
+              fullWidth: true),
+          const SizedBox(height: 8),
           Wrap(
-            spacing: 10,
-            runSpacing: 10,
+            spacing: 8,
+            runSpacing: 8,
             children: details,
           ),
           if (_customerAddress.isNotEmpty) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             _detailPill(
               Icons.home_outlined,
               'Address',
@@ -1276,10 +1272,13 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
               fullWidth: true,
             ),
           ],
+          // Only rendered while a scale is actually connecting/connected —
+          // silent the rest of the time, so it never costs space it isn't
+          // earning.
           if (_btConnecting || connected) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
               decoration: BoxDecoration(
                 color: CaptainTheme.surfaceMuted,
                 borderRadius: BorderRadius.circular(14),
@@ -1299,17 +1298,17 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
     bool fullWidth = false,
   }) {
     final card = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
       decoration: BoxDecoration(
         color: CaptainTheme.surfaceMuted,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(13),
       ),
       child: Row(
         mainAxisSize: fullWidth ? MainAxisSize.max : MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 16, color: CaptainTheme.accent),
-          const SizedBox(width: 8),
+          Icon(icon, size: 15, color: CaptainTheme.accent),
+          const SizedBox(width: 7),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2211,13 +2210,21 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
                     style: ElevatedButton.styleFrom(
                       backgroundColor: CaptainTheme.accent,
                       foregroundColor: Colors.white,
+                      disabledBackgroundColor: CaptainTheme.hairline,
+                      disabledForegroundColor: CaptainTheme.mutedText,
                       elevation: 0,
                       padding: const EdgeInsets.symmetric(horizontal: 18),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
                     ),
-                    onPressed: _isSubmitting ? null : _submitForm,
+                    // Finalize only totals what "Save item" already uploaded, so
+                    // submitting with nothing saved would close the visit at
+                    // 0 kg with no photos. Stay disabled until at least one
+                    // stream is saved.
+                    onPressed: (_isSubmitting || addedCount == 0)
+                        ? null
+                        : _submitForm,
                     icon: _isSubmitting
                         ? const SizedBox(
                             width: 18,
@@ -2232,7 +2239,11 @@ class _OperatorDataScreenState extends State<OperatorDataScreen>
                       _isSubmitting ? 'Submitting' : 'Submit',
                       style: AppTextStyles.labelLarge.copyWith(
                         fontSize: 14,
-                        color: Colors.white,
+                        // An explicit white would stay white on the disabled
+                        // grey fill; let the button's own foreground win.
+                        color: addedCount == 0 && !_isSubmitting
+                            ? CaptainTheme.mutedText
+                            : Colors.white,
                       ),
                     ),
                   ),

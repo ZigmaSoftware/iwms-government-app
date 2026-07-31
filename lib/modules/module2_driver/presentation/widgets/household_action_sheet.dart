@@ -4,6 +4,7 @@ import 'package:get_it/get_it.dart';
 import 'package:iwms_citizen_app/core/ui/app_flash.dart';
 import 'package:iwms_citizen_app/data/repositories/operator_trip_repository.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/theme/captain_theme.dart';
+import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/customer_waste_types_panel.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/screens/operator_data_screen.dart';
 import 'package:iwms_citizen_app/modules/module3_operator/utils/assignment_status_store.dart';
 
@@ -40,11 +41,26 @@ Future<bool> showHouseholdActionSheet(
     context: context,
     showDragHandle: true,
     backgroundColor: CaptainTheme.surface,
+    // The content height is not fixed — the waste-type panel adds a row per
+    // stream, and a large text scale grows everything — so the sheet must be
+    // free to size past the default half-screen and scroll instead of
+    // overflowing its box.
+    isScrollControlled: true,
+    constraints: BoxConstraints(
+      maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+    ),
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
-    builder: (sheetCtx) => Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+    builder: (sheetCtx) => SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        12,
+        20,
+        // Clear the home indicator / nav bar, so the last button is never
+        // half-hidden behind it.
+        24 + MediaQuery.viewPaddingOf(sheetCtx).bottom,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -63,9 +79,14 @@ Future<bool> showHouseholdActionSheet(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
                   color: CaptainTheme.strongText)),
-          if (contactNo.isNotEmpty)
-            Text('Contact: $contactNo',
-                style: TextStyle(color: CaptainTheme.mutedText)),
+          const SizedBox(height: 14),
+          // What this household is registered to hand over. Loaded inline so
+          // the sheet opens immediately and fills in a moment later.
+          //
+          // The customer's phone number is deliberately NOT shown here (or
+          // anywhere else in the driver app) — contactNo is still threaded
+          // through as data for the offline sync record, just never rendered.
+          CustomerWasteTypesPanel(customerId: customerId),
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
@@ -216,11 +237,20 @@ Future<bool> _confirmHandledStop(
     context: context,
     showDragHandle: true,
     backgroundColor: CaptainTheme.surface,
+    isScrollControlled: true,
+    constraints: BoxConstraints(
+      maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+    ),
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
-    builder: (sheetCtx) => Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+    builder: (sheetCtx) => SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+        20,
+        12,
+        20,
+        24 + MediaQuery.viewPaddingOf(sheetCtx).bottom,
+      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

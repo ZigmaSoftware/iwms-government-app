@@ -36,6 +36,10 @@ class ApiConfig {
   // needs a matching endpoint on iwms-government-backend before it works at runtime.
   static const String householdCollectionMarkStatus =
       '${desktopBase}waste/mark-household-status/';
+  // The waste streams saved against a customer in Customer Creation. Without
+  // `customer_id` it returns every active waste type instead.
+  static const String customerWasteTypes =
+      '${desktopBase}waste/get-waste-types/';
   static const String customerList =
       '${desktopBase}customer-masters/customercreations/';
   static const String registerFcmToken =

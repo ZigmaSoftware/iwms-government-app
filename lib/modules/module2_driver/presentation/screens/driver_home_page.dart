@@ -32,6 +32,7 @@ import 'package:iwms_citizen_app/core/network/authorized_dio.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/screens/attendance/attendance_driver.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/screens/captain_home_tab.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/state/collection_mode_store.dart';
+import 'package:iwms_citizen_app/modules/module2_driver/presentation/state/trip_sequence.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/theme/captain_theme.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/theme/driver_theme.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/captain_glass.dart';
@@ -272,6 +273,15 @@ class _DriverHomePageState extends State<DriverHomePage> {
     return GammaGeofenceConfig.center;
   }
 
+  /// The blocker on the trip the driver is currently looking at, or null when
+  /// it is open for work. Same rule the Home tab's carousel renders, so the
+  /// scan button and the cards can never disagree.
+  TripBlocker? _blockerForSelectedTrip() {
+    final trip = _todayTrip;
+    if (trip == null) return null;
+    return tripBlockers(_visibleTodayTrips)[trip.assignmentUniqueId];
+  }
+
   void _applyCollectionModeState(
     CollectionMode mode, {
     List<OperatorTripToday>? sourceTrips,
@@ -282,7 +292,10 @@ class _DriverHomePageState extends State<DriverHomePage> {
     final selectedTrip = _tripById(visibleTrips, preferredTripId) ??
         _tripById(visibleTrips, _mapTrip?.assignmentUniqueId) ??
         _tripById(visibleTrips, _todayTrip?.assignmentUniqueId) ??
-        (visibleTrips.isNotEmpty ? visibleTrips.first : null);
+        // Land on the trip the driver can actually work — with a 06:30 and a
+        // 15:00 bin run, opening on the locked afternoon card would be a dead
+        // end.
+        firstWorkableTrip(visibleTrips);
     final detail = selectedTrip?.toHistoryDetail();
     final (stops, tripStops) = _buildMapStopsForTrip(selectedTrip);
 
@@ -949,6 +962,15 @@ class _DriverHomePageState extends State<DriverHomePage> {
   /// The global Household/Bin toggle owns this choice now, so the FAB opens
   /// only the currently-selected flow instead of asking again.
   Future<void> _openScanner() async {
+    // The floating scan button is reachable from anywhere, including while a
+    // locked trip is the selected card. Scanning it would come back from the
+    // backend as TRIP_LOCKED, so say so here instead of opening the camera.
+    final blocker = _blockerForSelectedTrip();
+    if (blocker != null) {
+      AppFlash.warning(context, blocker.message);
+      return;
+    }
+
     if (CollectionModeStore.mode.value == CollectionMode.bin) {
       final result = await Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const OperatorTripScanScreen()),

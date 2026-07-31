@@ -162,11 +162,41 @@ class GrievanceSubcategoryOption extends Equatable {
   List<Object?> get props => [uniqueId];
 }
 
+/// A priority a citizen can choose when raising a grievance (from the `meta`
+/// endpoint's `priorities` array).
+class GrievancePriorityOption extends Equatable {
+  final String uniqueId;
+  final String code;
+  final String name;
+
+  const GrievancePriorityOption({
+    required this.uniqueId,
+    required this.code,
+    required this.name,
+  });
+
+  factory GrievancePriorityOption.fromJson(Map<String, dynamic> json) {
+    return GrievancePriorityOption(
+      uniqueId: json['unique_id']?.toString() ?? '',
+      code: json['priority_code']?.toString() ?? '',
+      name: json['priority_name']?.toString() ?? '',
+    );
+  }
+
+  @override
+  List<Object?> get props => [uniqueId];
+}
+
 class GrievanceMeta {
   final List<GrievanceCategoryOption> categories;
   final List<GrievanceSubcategoryOption> subcategories;
+  final List<GrievancePriorityOption> priorities;
 
-  const GrievanceMeta({this.categories = const [], this.subcategories = const []});
+  const GrievanceMeta({
+    this.categories = const [],
+    this.subcategories = const [],
+    this.priorities = const [],
+  });
 
   factory GrievanceMeta.fromJson(Map<String, dynamic> json) {
     return GrievanceMeta(
@@ -176,9 +206,22 @@ class GrievanceMeta {
       subcategories: ((json['subcategories'] as List?) ?? const [])
           .map((e) => GrievanceSubcategoryOption.fromJson(e as Map<String, dynamic>))
           .toList(),
+      priorities: ((json['priorities'] as List?) ?? const [])
+          .map((e) => GrievancePriorityOption.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 
   List<GrievanceSubcategoryOption> subFor(String categoryId) =>
       subcategories.where((s) => s.category == categoryId).toList();
+
+  /// Priority option matching a category's own default, if the backend sent
+  /// one — used to preselect the picker rather than leaving it blank.
+  GrievancePriorityOption? priorityFor(GrievanceCategoryOption? category) {
+    if (category?.defaultPriority == null) return null;
+    for (final p in priorities) {
+      if (p.uniqueId == category!.defaultPriority) return p;
+    }
+    return null;
+  }
 }

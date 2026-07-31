@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:iwms_citizen_app/core/push/push_notification_service.dart';
 import 'package:iwms_citizen_app/modules/module3_operator/offline/offline_login.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -397,6 +398,7 @@ class AuthRepository {
   }
 
   Future<void> logout() async {
+    PushNotificationService.instance.resetSession();
     await _prefs.remove(_userKey);
     await _prefs.remove(_roleKey);
     await _prefs.remove(_emp_idKey);

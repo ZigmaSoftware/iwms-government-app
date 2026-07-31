@@ -14,6 +14,7 @@ import 'package:iwms_citizen_app/data/repositories/operator_trip_repository.dart
 import 'package:iwms_citizen_app/logic/auth/auth_bloc.dart';
 import 'package:iwms_citizen_app/logic/auth/auth_state.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/theme/captain_theme.dart';
+import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/customer_waste_types_panel.dart';
 import 'package:iwms_citizen_app/modules/module3_operator/services/locationservices.dart';
 import 'package:iwms_citizen_app/modules/module3_operator/utils/assignment_status_store.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/screens/operator_data_screen.dart';
@@ -510,12 +511,24 @@ class _OperatorQRScannerState extends State<OperatorQRScanner> {
       context: context,
       showDragHandle: true,
       backgroundColor: CaptainTheme.surface,
+      // Not fixed-height — the waste-type panel adds a row per stream — so the
+      // sheet must be free to grow past the default half-screen and scroll
+      // instead of overflowing its box.
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+      ),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (sheetContext) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+        return SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            12,
+            20,
+            24 + MediaQuery.viewPaddingOf(sheetContext).bottom,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -542,11 +555,13 @@ class _OperatorQRScannerState extends State<OperatorQRScanner> {
                   color: CaptainTheme.strongText,
                 ),
               ),
-              if (contactNo.isNotEmpty)
-                Text(
-                  "Contact: $contactNo",
-                  style: TextStyle(color: CaptainTheme.mutedText),
-                ),
+              const SizedBox(height: 14),
+              // What this household is registered to hand over. The customer's
+              // phone number is deliberately NOT shown here (or anywhere else
+              // in the driver app) — contactNo is still threaded through as
+              // data for OperatorDataScreen's offline sync record, just never
+              // rendered.
+              CustomerWasteTypesPanel(customerId: customerId),
               const SizedBox(height: 16),
 
               /// BUTTONS

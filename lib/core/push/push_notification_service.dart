@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:iwms_citizen_app/core/api_config.dart';
 import 'package:iwms_citizen_app/core/di.dart';
 import 'package:iwms_citizen_app/core/network/auth_dio.dart';
+import 'package:iwms_citizen_app/core/network/auth_token_provider.dart';
 import 'package:iwms_citizen_app/shared/services/notification_service.dart';
 
 /// Instant, backend-triggered push notifications for the citizen app — e.g.
@@ -26,7 +27,7 @@ class PushNotificationService {
   static final PushNotificationService instance = PushNotificationService._();
 
   bool _firebaseReady = false;
-  bool _registeredThisSession = false;
+  String? _lastRegistrationFingerprint;
 
   /// Call once after login (or app start, if already logged in). Requests
   /// notification permission, gets the device's FCM token, registers it with
@@ -82,17 +83,23 @@ class PushNotificationService {
   }
 
   Future<void> _registerToken(String token, String registerUrl) async {
-    if (_registeredThisSession) return;
     try {
+      final authToken = await AuthTokenProvider.getToken() ?? '';
+      final fingerprint = '$registerUrl|$authToken|$token';
+      if (_lastRegistrationFingerprint == fingerprint) return;
       await AuthDio.dio.post(
         registerUrl,
         data: {'fcm_token': token},
       );
-      _registeredThisSession = true;
+      _lastRegistrationFingerprint = fingerprint;
       debugPrint('[push] FCM token registered with backend.');
     } catch (e) {
       debugPrint('[push] Failed to register FCM token (non-fatal): $e');
     }
+  }
+
+  void resetSession() {
+    _lastRegistrationFingerprint = null;
   }
 }
 

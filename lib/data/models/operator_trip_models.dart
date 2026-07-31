@@ -224,6 +224,26 @@ class OperatorTripCollectionPoint {
 
 /// A household stop (customer) on a household / bulk-waste trip. The driver
 /// collects each household directly (weight capture) instead of scanning a bin.
+/// One waste stream saved against a customer in Customer Creation, as served by
+/// `waste/get-waste-types/?customer_id=…`. This is what the household *should*
+/// be handing over, so the driver can check the segregation before collecting.
+class CustomerWasteType {
+  final String id;
+  final String name;
+
+  const CustomerWasteType({required this.id, required this.name});
+
+  factory CustomerWasteType.fromJson(Map<String, dynamic> json) =>
+      CustomerWasteType(
+        id: json['id']?.toString() ?? '',
+        name: json['waste_type_name']?.toString().trim() ?? '',
+      );
+
+  /// Lower-cased name, for the wet/dry/sanitary/mixed matching the UI does when
+  /// picking a colour and icon.
+  String get key => name.toLowerCase();
+}
+
 class OperatorTripHouseholdStop {
   final String uniqueId;
   final int sequence;
@@ -301,6 +321,8 @@ class OperatorTripProgress {
   }
 
   double get fraction => total == 0 ? 0.0 : collected / total;
+
+  double get resolvedFraction => total == 0 ? 0.0 : resolved / total;
 }
 
 class OperatorTripWard {
@@ -404,6 +426,24 @@ class OperatorTripToday {
   bool get isHousehold =>
       collectionType == 'household_collection' ||
       collectionType == 'bulk_waste_collection';
+
+  /// No work left on this trip: every stop resolved (collected or not
+  /// available), or the backend already marked the assignment Completed.
+  ///
+  /// This is what sequences a crew's same-type trips — the next bin trip only
+  /// unlocks once this one reports done. Mirrors `assignment_is_finished` on
+  /// the backend, so the app's lock and the scan endpoint agree.
+  bool get isFinished =>
+      status.toLowerCase() == 'completed' || progress.completed;
+
+  /// `HH:mm` for the header/lock copy ("Finish your 06:30 trip first").
+  String get scheduledTimeLabel {
+    final raw = scheduledTime;
+    if (raw == null || raw.isEmpty) return '';
+    final parts = raw.split(':');
+    if (parts.length < 2) return raw;
+    return '${parts[0].padLeft(2, '0')}:${parts[1].padLeft(2, '0')}';
+  }
 
   String get assignmentTypeLabel {
     switch (collectionType) {

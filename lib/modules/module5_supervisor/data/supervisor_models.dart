@@ -702,6 +702,7 @@ class SupervisorTeam {
     required this.operatorId,
     required this.driverName,
     required this.operatorName,
+    required this.extraOperatorIds,
     required this.extraCount,
     required this.status,
     required this.approvalStatus,
@@ -712,19 +713,34 @@ class SupervisorTeam {
   final String operatorId;
   final String driverName;
   final String operatorName;
+  final List<String> extraOperatorIds;
   final int extraCount;
   final String status;
   final String approvalStatus;
 
+  String get label {
+    final crew = [driverName, operatorName]
+        .where((value) => value.trim().isNotEmpty)
+        .join(' / ');
+    return crew.isNotEmpty ? crew : uniqueId;
+  }
+
   factory SupervisorTeam.fromJson(Map<String, dynamic> j) {
     final extra = j['extra_operator_id'];
+    final extraIds = extra is List
+        ? extra
+            .map((item) => item?.toString() ?? '')
+            .where((item) => item.isNotEmpty)
+            .toList()
+        : const <String>[];
     return SupervisorTeam(
       uniqueId: _str(j['unique_id']),
       driverId: _str(j['driver_id']),
       operatorId: _str(j['operator_id']),
       driverName: _str(j['driver_name']),
       operatorName: _str(j['operator_name']),
-      extraCount: extra is List ? extra.length : 0,
+      extraOperatorIds: extraIds,
+      extraCount: extraIds.length,
       status: _str(j['status']),
       approvalStatus: _str(j['approval_status']),
     );

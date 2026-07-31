@@ -22,6 +22,7 @@ enum _Stage {
   menu,
   pickCategory,
   pickSubcategory,
+  pickPriority,
   askLocation,
   askDescription,
   submitting,
@@ -53,6 +54,7 @@ class _GrievanceChatScreenState extends State<GrievanceChatScreen> {
   GrievanceMeta? _meta;
   GrievanceCategoryOption? _category;
   GrievanceSubcategoryOption? _subcategory;
+  GrievancePriorityOption? _priority;
   String? _location;
 
   @override
@@ -144,6 +146,7 @@ class _GrievanceChatScreenState extends State<GrievanceChatScreen> {
     _user(c.name);
     _category = c;
     _subcategory = null;
+    _priority = null;
     _location = null;
     _setReplies([]);
     final subs = _meta?.subFor(c.uniqueId) ?? const [];
@@ -167,6 +170,34 @@ class _GrievanceChatScreenState extends State<GrievanceChatScreen> {
   }
 
   Future<void> _afterSubcategory() async {
+    final priorities = _meta?.priorities ?? const [];
+    if (priorities.isEmpty) {
+      // No priority list available (meta fetch failed, or none configured) —
+      // fall back to the category's own default, exactly like before this
+      // step existed, so the flow never blocks on missing master data.
+      _afterPriority();
+      return;
+    }
+    final suggested = _meta?.priorityFor(_category);
+    await _botTyping('⚡ How urgent is this?');
+    _stage = _Stage.pickPriority;
+    _setReplies([
+      for (final p in priorities)
+        _Reply(
+          p.uniqueId == suggested?.uniqueId ? '${p.name} (suggested)' : p.name,
+          () => _pickPriority(p),
+        ),
+    ]);
+  }
+
+  Future<void> _pickPriority(GrievancePriorityOption p) async {
+    _user(p.name);
+    _priority = p;
+    _setReplies([]);
+    _afterPriority();
+  }
+
+  Future<void> _afterPriority() async {
     if (_category?.requiresLocation == true) {
       _stage = _Stage.askLocation;
       await _botTyping('📍 Where is the issue? (area, street or landmark)');
@@ -183,7 +214,7 @@ class _GrievanceChatScreenState extends State<GrievanceChatScreen> {
       final ticket = await _repo.createTicket(
         categoryId: _category!.uniqueId,
         subcategoryId: _subcategory?.uniqueId,
-        priorityId: _category!.defaultPriority,
+        priorityId: _priority?.uniqueId ?? _category!.defaultPriority,
         description: description,
         locationText: _location,
       );
