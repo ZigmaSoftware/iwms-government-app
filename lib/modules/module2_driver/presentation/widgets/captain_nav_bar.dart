@@ -4,21 +4,27 @@ import 'package:flutter/material.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/theme/captain_theme.dart';
 import 'package:iwms_citizen_app/modules/module3_operator/utils/attendance_blink_store.dart';
 
-/// Captain bottom navigation — a FLOATING rounded-rectangle bar (App Store
-/// style: detached from the screen edges, big corner radius, soft shadow)
-/// with 4 tabs and the Scan FAB hovering over its centre.
+const double kCaptainNavBarHeight = 68;
+const double kCaptainNavBarHorizontalPadding = 16;
+const double kCaptainNavBarRadius = 28;
+const double kCaptainHomeBottomClearance = 102;
+const double kCaptainMapBottomOverlayOffset = 74;
+const double kCaptainProfileBottomSpacer = 94;
+
+/// Captain bottom navigation — a docked glass bar with 4 tabs and the Scan
+/// FAB hovering over its centre.
 /// Layout: [tab0][tab1] (Scan FAB) [tab2][tab3].
 ///
-/// Rules carried over from the docked version: big tap targets (full slot
-/// height), icon + always-visible label, animated indicator pill, and the
-/// attendance blink badge so a due check-in is impossible to miss.
+/// Rules carried over from the original version: big tap targets (full slot
+/// height), icon + always-visible label, glass blur, animated indicator pill,
+/// and the attendance blink badge so a due check-in is impossible to miss.
 class CaptainNavBar extends StatelessWidget {
   const CaptainNavBar({
     super.key,
     required this.activeIndex,
     required this.onTabSelected,
     required this.items,
-    this.height = 68,
+    this.height = kCaptainNavBarHeight,
   });
 
   final int activeIndex;
@@ -30,41 +36,45 @@ class CaptainNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     assert(items.length == 4, 'CaptainNavBar expects exactly 4 side tabs');
     final dark = CaptainThemeStore.isDark.value;
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    const borderRadius = BorderRadius.only(
+      topLeft: Radius.circular(kCaptainNavBarRadius),
+      topRight: Radius.circular(kCaptainNavBarRadius),
+    );
 
-    return SafeArea(
-      top: false,
-      minimum: const EdgeInsets.only(bottom: 10),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(28),
-          child: BackdropFilter(
-            // Frosted floating bar — content scrolling beneath blurs through.
-            filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-            child: Container(
-              height: height,
-              decoration: BoxDecoration(
-                color:
-                    CaptainTheme.surface.withValues(alpha: dark ? 0.55 : 0.62),
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(
-                  color: dark
-                      ? Colors.white.withValues(alpha: 0.14)
-                      : const Color(0xFF0B1220).withValues(alpha: 0.12),
-                  width: 1,
-                ),
-                // Empty in light mode — glass carries no shadow there.
-                boxShadow: CaptainTheme.elevatedShadow,
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: kCaptainNavBarHorizontalPadding,
+      ),
+      child: ClipRRect(
+        borderRadius: borderRadius,
+        child: BackdropFilter(
+          // Keep the same frosted texture, but let the bar sit flush to the
+          // screen bottom instead of floating above it.
+          filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+          child: Container(
+            height: height + bottomInset,
+            padding: EdgeInsets.only(bottom: bottomInset),
+            decoration: BoxDecoration(
+              color: CaptainTheme.surface.withValues(alpha: dark ? 0.55 : 0.62),
+              borderRadius: borderRadius,
+              border: Border.all(
+                color: dark
+                    ? Colors.white.withValues(alpha: 0.14)
+                    : const Color(0xFF0B1220).withValues(alpha: 0.12),
+                width: 1,
               ),
-              child: Row(
-                children: [
-                  Expanded(child: _slot(0)),
-                  Expanded(child: _slot(1)),
-                  const SizedBox(width: 64), // gap under the hovering Scan FAB
-                  Expanded(child: _slot(2)),
-                  Expanded(child: _slot(3)),
-                ],
-              ),
+              // Empty in light mode — glass carries no shadow there.
+              boxShadow: CaptainTheme.elevatedShadow,
+            ),
+            child: Row(
+              children: [
+                Expanded(child: _slot(0)),
+                Expanded(child: _slot(1)),
+                const SizedBox(width: 64), // gap under the hovering Scan FAB
+                Expanded(child: _slot(2)),
+                Expanded(child: _slot(3)),
+              ],
             ),
           ),
         ),
@@ -207,8 +217,8 @@ class _TabIcon extends StatelessWidget {
 }
 
 /// The pulsing Scan FAB — bright mint with DARK ink iconography (a bright
-/// fill needs dark ink for contrast, not white). Hovers over the floating
-/// bar's centre via `FloatingActionButtonLocation.centerDocked`.
+/// fill needs dark ink for contrast, not white). Hovers over the docked bar's
+/// centre via `FloatingActionButtonLocation.centerDocked`.
 class CaptainScanFab extends StatefulWidget {
   const CaptainScanFab({
     super.key,

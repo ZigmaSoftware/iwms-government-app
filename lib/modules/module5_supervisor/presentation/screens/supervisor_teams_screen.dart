@@ -6,12 +6,9 @@ import 'package:iwms_citizen_app/modules/module5_supervisor/data/supervisor_mode
 import 'package:iwms_citizen_app/modules/module5_supervisor/data/supervisor_repository.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/logic/supervisor_bloc.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_add_team_form.dart';
-// Team / alternate CREATION ships in the next release — see the commented
-// speed-dial block below. Editing an existing team is unaffected and still
-// uses SupervisorAddTeamForm.
-// import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_alt_staff_template_form.dart';
+import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_alt_staff_template_form.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_assignment_picker_dialog.dart';
-// import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_no_staff_dialog.dart';
+import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_no_staff_dialog.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/theme/supervisor_theme.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_state_views.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_visuals.dart';
@@ -31,9 +28,8 @@ class _SupervisorTeamsScreenState extends State<SupervisorTeamsScreen> {
   bool _loading = true;
   String? _error;
   List<SupervisorTeam> _teams = [];
-  // Speed-dial state — restore with the creation flows next release.
-  // bool _fabOpen = false;
-  // bool _checkingAvailability = false;
+  bool _fabOpen = false;
+  bool _checkingAvailability = false;
 
   bool _loadingAlternates = true;
   String? _alternatesError;
@@ -99,12 +95,10 @@ class _SupervisorTeamsScreenState extends State<SupervisorTeamsScreen> {
         title: const Text('Teams'),
       ),
       body: SupervisorPatternBackground(child: _body()),
-      // "+" speed dial hidden — team / alternate creation ships next release.
-      // floatingActionButton: _buildSpeedDialFab(),
+      floatingActionButton: _buildSpeedDialFab(),
     );
   }
 
-  /*
   Widget _buildSpeedDialFab() {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -225,46 +219,6 @@ class _SupervisorTeamsScreenState extends State<SupervisorTeamsScreen> {
     final created = await SupervisorAddTeamForm.show(context);
     if (created == true) await _load();
   }
-  */
-
-  /// Stands in for the hidden "+" speed dial: tells the supervisor that
-  /// creating teams and alternates is coming, rather than leaving the screen
-  /// looking like the action is missing. Remove when the creation flows above
-  /// are re-enabled.
-  Widget _comingSoonNote() {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: SupervisorTheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: SupervisorTheme.hairline),
-      ),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.schedule_rounded,
-            size: 18,
-            color: SupervisorTheme.mutedText,
-          ),
-          const SizedBox(width: 10),
-          const Expanded(
-            child: Text(
-              'Creating teams and alternate templates arrives in the next '
-              'release. Existing teams can still be viewed and edited.',
-              style: TextStyle(
-                fontSize: 12.5,
-                height: 1.35,
-                fontWeight: FontWeight.w600,
-                color: SupervisorTheme.mutedText,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _body() {
     if (_loading) return const SupervisorLoadingView();
@@ -272,17 +226,10 @@ class _SupervisorTeamsScreenState extends State<SupervisorTeamsScreen> {
       return SupervisorErrorView(message: _error!, onRetry: _load);
     }
     if (_teams.isEmpty) {
-      return Column(
-        children: [
-          Expanded(
-            child: SupervisorEmptyView(
-              message: 'No staff templates found.',
-              icon: Icons.groups_2_rounded,
-              onRefresh: _load,
-            ),
-          ),
-          _comingSoonNote(),
-        ],
+      return SupervisorEmptyView(
+        message: 'No staff templates found.',
+        icon: Icons.groups_2_rounded,
+        onRefresh: _load,
       );
     }
 
@@ -365,7 +312,6 @@ class _SupervisorTeamsScreenState extends State<SupervisorTeamsScreen> {
                   ],
                 ),
               ),
-              _comingSoonNote(),
             ],
           ),
         );
@@ -391,7 +337,7 @@ class _SupervisorTeamsScreenState extends State<SupervisorTeamsScreen> {
       onRefresh: onRefresh,
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 120),
         itemCount: entries.length,
         separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (_, i) {
@@ -430,7 +376,7 @@ class _SupervisorTeamsScreenState extends State<SupervisorTeamsScreen> {
       onRefresh: _loadAlternates,
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 120),
         itemCount: _alternates.length,
         separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (_, i) => _AlternateCard(alt: _alternates[i]),

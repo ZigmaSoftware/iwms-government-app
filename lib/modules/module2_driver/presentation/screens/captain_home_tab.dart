@@ -13,6 +13,7 @@ import 'package:iwms_citizen_app/modules/module2_driver/presentation/state/trip_
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/household_action_sheet.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/bin_detail_sheet.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/captain_glass.dart';
+import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/captain_nav_bar.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/collection_progress_meter.dart';
 import 'package:iwms_citizen_app/shared/widgets/crew_avatar_stack.dart';
 
@@ -169,7 +170,12 @@ class _CaptainHomeTabState extends State<CaptainHomeTab> {
         physics: const AlwaysScrollableScrollPhysics(),
         // DriverHomePage already owns the header and overlays the bottom
         // navigation/FAB. A 16 px page grid matches its map/profile sections.
-        padding: EdgeInsets.fromLTRB(16, 12, 16, 112 + bottomSafeArea),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          12,
+          16,
+          kCaptainHomeBottomClearance + bottomSafeArea,
+        ),
         children: [
           if (multi)
             _buildTripCarousel(
@@ -275,8 +281,7 @@ class _CaptainHomeTabState extends State<CaptainHomeTab> {
                         child: _TripHeroCard(
                           trip: trips[index],
                           onOpenMap: () => widget.onOpenMap(trips[index]),
-                          blocker:
-                              blockers[trips[index].assignmentUniqueId],
+                          blocker: blockers[trips[index].assignmentUniqueId],
                           // Position within the whole day's carousel, so the
                           // card can label itself "Trip 2 of 3".
                           index: index,

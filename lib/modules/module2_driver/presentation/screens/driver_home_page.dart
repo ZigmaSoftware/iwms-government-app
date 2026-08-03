@@ -2191,7 +2191,7 @@ class _HomeTabState extends State<_HomeTab> with TickerProviderStateMixin {
             ? nextCustomer.sequence - 1
             : _customers.indexWhere((c) => c.id == nextCustomer.id));
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
-    final bottomOverlayOffset = 84.0 + bottomInset;
+    final bottomOverlayOffset = kCaptainMapBottomOverlayOffset + bottomInset;
     // The map now carries ONLY the next-collection-point card (the daily
     // assignment carousel was removed to declutter the view); controls sit
     // just below it, or at the top when there's no next stop.
@@ -4103,7 +4103,8 @@ class _ProfileTabState extends State<_ProfileTab> {
               ),
             ),
             SizedBox(
-              height: MediaQuery.viewPaddingOf(context).bottom + 104,
+              height: MediaQuery.viewPaddingOf(context).bottom +
+                  kCaptainProfileBottomSpacer,
             ),
           ],
         ),
