@@ -177,6 +177,8 @@ class SupervisorAssignment {
     this.hasBin = false,
     this.hasHousehold = false,
     this.hasBulk = false,
+    this.totalTripTimeSeconds,
+    this.tripCount = 1,
   });
 
   final String uniqueId;
@@ -199,6 +201,12 @@ class SupervisorAssignment {
   final bool hasBin;
   final bool hasHousehold;
   final bool hasBulk;
+  // Whole seconds, actual_start_at -> actual_end_at (or -> now while In
+  // Progress). Null until the trip has been started.
+  final int? totalTripTimeSeconds;
+  // This assignment's 1-based position among today's assignments for the
+  // same trip plan — 1 normally, 2+ for a Re-Trip continuation.
+  final int tripCount;
 
   /// "Bin Collection", "Household Collection", "Bulk Waste Collection", a
   /// combination, or "Collection" if none of the flags are set.
@@ -317,6 +325,10 @@ class SupervisorAssignment {
       hasBin: collectionTypes['has_bin'] == true,
       hasHousehold: collectionTypes['has_household'] == true,
       hasBulk: collectionTypes['has_bulk'] == true,
+      totalTripTimeSeconds: int.tryParse(
+        json['total_trip_time_seconds']?.toString() ?? '',
+      ),
+      tripCount: int.tryParse(json['trip_count']?.toString() ?? '') ?? 1,
     );
   }
 
@@ -933,6 +945,153 @@ class SupervisorHousehold {
       isActive: j['is_active'] == true,
       latitude: _str(j['latitude']),
       longitude: _str(j['longitude']),
+    );
+  }
+}
+
+// ============================================================
+// RE-TRIP REQUESTS
+// ============================================================
+
+/// One outstanding stop the driver could not finish, as listed in a Re-Trip
+/// request's `live_pending` block. Covers both stop kinds: a bin collection
+/// point (with an optional bin) and a household customer.
+class SupervisorRetripStop {
+  const SupervisorRetripStop({
+    required this.uniqueId,
+    required this.name,
+    required this.status,
+    required this.sequence,
+  });
+
+  /// The DAILY stop row id (`DailyTripCollectionPoint.unique_id` /
+  /// `DailyTripHouseholdCollection.unique_id`) — this is what the approve
+  /// endpoint expects back in `collection_point_ids`.
+  final String uniqueId;
+  final String name;
+  final String status;
+  final int sequence;
+
+  factory SupervisorRetripStop.fromJson(Map<String, dynamic> j) {
+    return SupervisorRetripStop(
+      uniqueId: _str(j['unique_id']),
+      name: _str(j['name']).isNotEmpty ? _str(j['name']) : _str(j['unique_id']),
+      status: _str(j['status']),
+      sequence: int.tryParse(_str(j['sequence'])) ?? 0,
+    );
+  }
+}
+
+/// A driver's request to close a trip that still has stops, awaiting this
+/// supervisor's decision.
+///
+/// The approve flow differs by [collectionType]:
+///   * household / bulk — every remaining household carries over; the
+///     supervisor only confirms.
+///   * bin — the supervisor ticks which collection points carry over, and
+///     sends those stop ids as `collection_point_ids`.
+class SupervisorRetripRequest {
+  const SupervisorRetripRequest({
+    required this.uniqueId,
+    required this.assignmentUniqueId,
+    required this.status,
+    required this.reason,
+    required this.collectionType,
+    required this.areaName,
+    required this.vehicleNo,
+    required this.requestedByName,
+    required this.tripDate,
+    required this.scheduledTime,
+    required this.pendingBinCount,
+    required this.pendingHouseholdCount,
+    required this.pendingCollectionPoints,
+    required this.pendingHouseholds,
+    required this.createdAt,
+  });
+
+  final String uniqueId;
+  final String assignmentUniqueId;
+  final String status;
+  final String reason;
+
+  /// `bin` | `household` | `bulk` (from the trip plan).
+  final String collectionType;
+  final String areaName;
+  final String vehicleNo;
+  final String requestedByName;
+  final String tripDate;
+  final String scheduledTime;
+
+  /// Counts snapshotted when the driver raised the request.
+  final int pendingBinCount;
+  final int pendingHouseholdCount;
+
+  /// Recomputed server-side on every read — a colleague may have collected a
+  /// stop since the request was raised, so the supervisor ticks boxes against
+  /// reality, not history.
+  final List<SupervisorRetripStop> pendingCollectionPoints;
+  final List<SupervisorRetripStop> pendingHouseholds;
+
+  final DateTime? createdAt;
+
+  bool get isPending => status.toLowerCase() == 'pending';
+
+  /// Household and bulk trips both carry every remaining stop automatically —
+  /// only bin trips offer a per-stop choice.
+  ///
+  /// The backend's `TripPlan.collection_type` choices are the full values
+  /// `bin_collection` / `household_collection` / `bulk_waste_collection` (see
+  /// `TripPlanSerializer.get_collection_type`) — never the bare
+  /// `household`/`bulk`/`bin`, so match on `contains` rather than equality.
+  bool get isHousehold =>
+      collectionType.contains('household') || collectionType.contains('bulk');
+
+  /// Live count, preferred over the snapshot for anything the supervisor acts on.
+  int get livePendingTotal =>
+      pendingCollectionPoints.length + pendingHouseholds.length;
+
+  /// Snapshot count, for "the driver saw N stops" copy.
+  int get snapshotPendingTotal => pendingBinCount + pendingHouseholdCount;
+
+  List<SupervisorRetripStop> get liveStops =>
+      isHousehold ? pendingHouseholds : pendingCollectionPoints;
+
+  factory SupervisorRetripRequest.fromJson(Map<String, dynamic> j) {
+    List<SupervisorRetripStop> stops(dynamic block, String key) {
+      if (block is! Map) return const [];
+      final raw = block[key];
+      if (raw is! List) return const [];
+      return raw
+          .whereType<Map>()
+          .map((e) => SupervisorRetripStop.fromJson(
+                Map<String, dynamic>.from(e),
+              ))
+          .toList();
+    }
+
+    // `live_pending` is authoritative; fall back to the driver's snapshot if an
+    // older payload omits it.
+    final live = j['live_pending'] ?? j['pending_snapshot'];
+
+    return SupervisorRetripRequest(
+      uniqueId: _str(j['unique_id']),
+      assignmentUniqueId: _str(j['assignment_unique_id']).isNotEmpty
+          ? _str(j['assignment_unique_id'])
+          : _str(j['assignment']),
+      status: _str(j['status']).isNotEmpty ? _str(j['status']) : 'Pending',
+      reason: _str(j['reason']),
+      collectionType: _str(j['collection_type']).toLowerCase(),
+      areaName: _str(j['area_name']),
+      vehicleNo: _str(j['vehicle_no']),
+      requestedByName: _str(j['requested_by_name']),
+      tripDate: _str(j['trip_date']),
+      scheduledTime: _str(j['scheduled_time']),
+      pendingBinCount: int.tryParse(_str(j['pending_bin_count'])) ?? 0,
+      pendingHouseholdCount:
+          int.tryParse(_str(j['pending_household_count'])) ?? 0,
+      pendingCollectionPoints: stops(live, 'collection_points'),
+      pendingHouseholds: stops(live, 'households'),
+      createdAt: DateTime.tryParse(_str(j['created_at'])),
     );
   }
 }

@@ -114,6 +114,7 @@ class SupervisorNavItem {
     required this.icon,
     required this.label,
     this.iconAsset,
+    this.badgeCount = 0,
   });
 
   final IconData icon;
@@ -122,6 +123,10 @@ class SupervisorNavItem {
   /// Optional raster icon. When set, the image is rendered in place of [icon]
   /// (used for the Profile tab's avatar).
   final String? iconAsset;
+
+  /// Unread/actionable count shown as a red pill over the icon's top-right.
+  /// Zero hides the badge; counts above 9 render as "9+".
+  final int badgeCount;
 }
 
 class _AnimatedNavTab extends StatelessWidget {
@@ -165,17 +170,30 @@ class _AnimatedNavTab extends StatelessWidget {
             scale: selected ? 1.12 : 1,
             duration: const Duration(milliseconds: 240),
             curve: Curves.easeOutBack,
-            child: item.iconAsset != null
-                ? Opacity(
-                    opacity: selected ? 1 : 0.86,
-                    child: Image.asset(
-                      item.iconAsset!,
-                      width: 26,
-                      height: 26,
-                      fit: BoxFit.contain,
-                    ),
-                  )
-                : Icon(item.icon, color: color, size: 24),
+            // clipBehavior: none so the badge can sit slightly outside the
+            // icon's box without being cut off.
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                item.iconAsset != null
+                    ? Opacity(
+                        opacity: selected ? 1 : 0.86,
+                        child: Image.asset(
+                          item.iconAsset!,
+                          width: 26,
+                          height: 26,
+                          fit: BoxFit.contain,
+                        ),
+                      )
+                    : Icon(item.icon, color: color, size: 24),
+                if (item.badgeCount > 0)
+                  Positioned(
+                    top: -5,
+                    right: -7,
+                    child: _NavBadge(count: item.badgeCount),
+                  ),
+              ],
+            ),
           ),
           const SizedBox(height: 3),
           Text(
@@ -191,6 +209,45 @@ class _AnimatedNavTab extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Red count pill over a nav icon. Sized to stay legible at 1–2 digits and to
+/// keep a white ring so it reads clearly against the frosted bar.
+class _NavBadge extends StatelessWidget {
+  const _NavBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = count > 9 ? '9+' : '$count';
+    return Container(
+      constraints: const BoxConstraints(minWidth: 17, minHeight: 17),
+      padding: const EdgeInsets.symmetric(horizontal: 4.5),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: SupervisorTheme.danger,
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: Colors.white, width: 1.6),
+        boxShadow: [
+          BoxShadow(
+            color: SupervisorTheme.danger.withValues(alpha: 0.4),
+            blurRadius: 5,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 9.5,
+          fontWeight: FontWeight.w900,
+          height: 1,
+        ),
       ),
     );
   }

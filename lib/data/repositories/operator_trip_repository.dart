@@ -170,6 +170,60 @@ class OperatorTripRepository {
     }
   }
 
+  /// Explicit "swipe to start" — idempotent on the backend, so calling it on
+  /// an already-running trip is a normal success, not an error.
+  Future<OperatorTripToday> startTrip(String assignmentId) async {
+    final dio = await authorizedDio();
+    try {
+      final resp = await dio.post(ApiConfig.operatorTripStart(assignmentId));
+      final data = resp.data;
+      final tripJson = data is Map && data['trip'] is Map
+          ? Map<String, dynamic>.from(data['trip'] as Map)
+          : Map<String, dynamic>.from(data as Map);
+      return OperatorTripToday.fromJson(tripJson);
+    } on DioException catch (e) {
+      _throwDio(e);
+    }
+  }
+
+  /// Explicit "end trip". If stops remain, this does NOT close the trip — the
+  /// backend raises a Re-Trip request for a supervisor to review, and
+  /// [OperatorTripEndResult.retripRequested] comes back `true` instead of an
+  /// error, carrying the pending counts so the caller can show the mandatory
+  /// reason prompt with `retryWithReason`.
+  Future<OperatorTripEndResult> endTrip(
+    String assignmentId, {
+    String? reason,
+  }) async {
+    final dio = await authorizedDio();
+    try {
+      final resp = await dio.post(
+        ApiConfig.operatorTripEnd(assignmentId),
+        data: {
+          if (reason != null && reason.isNotEmpty) 'reason': reason,
+        },
+      );
+      return OperatorTripEndResult.fromJson(
+        Map<String, dynamic>.from(resp.data as Map),
+      );
+    } on DioException catch (e) {
+      // A 400 REASON_REQUIRED is expected the first time the driver ends a
+      // trip with stops left — surface it as a normal result, not a thrown
+      // exception, so the caller can show the reason sheet without a catch.
+      final data = e.response?.data;
+      if (e.response?.statusCode == 400 &&
+          data is Map &&
+          data['code'] == 'REASON_REQUIRED') {
+        return OperatorTripEndResult.reasonRequired(
+          pendingBinCount: (data['pending_bin_count'] as num?)?.toInt() ?? 0,
+          pendingHouseholdCount:
+              (data['pending_household_count'] as num?)?.toInt() ?? 0,
+        );
+      }
+      _throwDio(e);
+    }
+  }
+
   Future<List<OperatorTripHistorySummary>> fetchHistory({
     DateTime? from,
     DateTime? to,

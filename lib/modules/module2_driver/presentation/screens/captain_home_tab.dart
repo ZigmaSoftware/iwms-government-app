@@ -15,6 +15,7 @@ import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/bin
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/captain_glass.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/captain_nav_bar.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/collection_progress_meter.dart';
+import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/trip_lifecycle_control.dart';
 import 'package:iwms_citizen_app/shared/widgets/crew_avatar_stack.dart';
 
 /// Captain Home — the "today-first" dashboard of the merged driver app.
@@ -160,6 +161,11 @@ class _CaptainHomeTabState extends State<CaptainHomeTab> {
     final blockers = tripBlockers(trips);
     final blocker = blockers[t.assignmentUniqueId];
     final locked = blocker != null;
+    // Distinct from `locked` (another trip must finish first): this trip IS
+    // the driver's turn, but they haven't pressed Start yet. The backend
+    // rejects scan/collect on a not-started trip (`TRIP_NOT_STARTED`), so the
+    // stops render tappable-but-greyed with an explainer, not fully inert.
+    final notStarted = !locked && !t.isFinished && !t.isStarted;
 
     final bottomSafeArea = MediaQuery.viewPaddingOf(context).bottom;
 
@@ -188,22 +194,46 @@ class _CaptainHomeTabState extends State<CaptainHomeTab> {
               trip: t,
               onOpenMap: () => widget.onOpenMap(t),
             ),
-          const SizedBox(height: 12),
-          _QuickActionsRow(
-            onOpenMap: () => widget.onOpenMap(t),
-            // Scanning a locked trip's bin is rejected by the backend
-            // (TRIP_LOCKED), so don't offer the scanner for it at all.
-            onScan: locked ? null : widget.onScan,
-            onHistory: widget.onOpenTrips ??
-                () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const OperatorTripHistoryScreen(),
+          // A completed trip has nothing left to start/end or navigate/scan
+          // for — those controls disappear entirely rather than rendering
+          // disabled, so the card reads as a finished record, not a stalled
+          // in-progress one. The stop/household list below still shows what
+          // was actually collected.
+          if (!t.isFinished) ...[
+            const SizedBox(height: 12),
+            TripLifecycleControl(
+              trip: t,
+              locked: locked,
+              onChanged: widget.onRefresh,
+            ),
+            const SizedBox(height: 12),
+            _QuickActionsRow(
+              onOpenMap: () => widget.onOpenMap(t),
+              // Scanning a locked trip's bin is rejected by the backend
+              // (TRIP_LOCKED) — no explainer, it isn't this trip's turn at all.
+              // Scanning before Start is also rejected (TRIP_NOT_STARTED), but
+              // stays tappable so the driver gets told to press Start rather
+              // than the button just doing nothing.
+              onScan: locked
+                  ? null
+                  : (notStarted
+                      ? () => showStartRequiredSheet(context)
+                      : widget.onScan),
+              onHistory: widget.onOpenTrips ??
+                  () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const OperatorTripHistoryScreen(),
+                        ),
                       ),
-                    ),
-          ),
+              scanDimmed: notStarted,
+            ),
+          ],
           const SizedBox(height: 16),
           if (locked) ...[
             _LockedTripBanner(blocker: blocker),
+            const SizedBox(height: 16),
+          ] else if (notStarted) ...[
+            const _StartRequiredBanner(),
             const SizedBox(height: 16),
           ],
           // Household / bulk trips collect customers directly (no bins), so
@@ -218,6 +248,7 @@ class _CaptainHomeTabState extends State<CaptainHomeTab> {
               trip: t,
               onChanged: widget.onRefresh,
               locked: locked,
+              notStarted: notStarted,
             ),
           ] else ...[
             CollectionProgressMeter(collectionPoints: t.collectionPoints),
@@ -231,6 +262,7 @@ class _CaptainHomeTabState extends State<CaptainHomeTab> {
               trip: t,
               onChanged: widget.onRefresh,
               locked: locked,
+              notStarted: notStarted,
             ),
           ],
         ],
@@ -712,6 +744,26 @@ class _LockedContent extends StatelessWidget {
   }
 }
 
+/// Same greyed-out look as [_LockedContent], but WITHOUT `IgnorePointer` — the
+/// "not started" case wants taps to reach the tiles so they can show the
+/// "press Start first" explainer, rather than swallowing them silently.
+class _DimmedContent extends StatelessWidget {
+  const _DimmedContent({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: 0.5,
+      child: ColorFiltered(
+        colorFilter: const ColorFilter.matrix(_greyscaleMatrix),
+        child: child,
+      ),
+    );
+  }
+}
+
 /// The padlock badge floated over a locked trip card.
 class _LockChip extends StatelessWidget {
   const _LockChip({required this.blocker});
@@ -742,6 +794,60 @@ class _LockChip extends StatelessWidget {
               fontWeight: FontWeight.w800,
               fontSize: 12,
               letterSpacing: 0.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Full-width explainer under the quick actions when the SELECTED trip is
+/// this driver's turn but hasn't been started yet. Distinct from
+/// [_LockedTripBanner] (another trip must finish first) — here the trip is
+/// open, the driver just hasn't pressed Start.
+class _StartRequiredBanner extends StatelessWidget {
+  const _StartRequiredBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: CaptainTheme.accentSoft,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: CaptainTheme.accent.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.play_circle_outline_rounded,
+              size: 19, color: CaptainTheme.accent),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Press Start to begin',
+                  style: TextStyle(
+                    color: CaptainTheme.strongText,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13.5,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Stops are locked until you start this trip.',
+                  style: TextStyle(
+                    color: CaptainTheme.mutedText,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12.5,
+                    height: 1.35,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -1014,30 +1120,36 @@ class _TripHeroCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 14),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 7,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            if (trip.vehicle != null)
+                        if (trip.isFinished)
+                          _CompletedTripSummaryRow(
+                            trip: trip,
+                            veryNarrow: veryNarrow,
+                          )
+                        else
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 7,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              if (trip.vehicle != null)
+                                _CompactInfoItem(
+                                  icon: Icons.local_shipping_rounded,
+                                  text: trip.vehicle!.vehicleNo,
+                                  maxTextWidth: veryNarrow ? 76 : 108,
+                                ),
                               _CompactInfoItem(
-                                icon: Icons.local_shipping_rounded,
-                                text: trip.vehicle!.vehicleNo,
-                                maxTextWidth: veryNarrow ? 76 : 108,
+                                icon: Icons.schedule_rounded,
+                                text: _formatTime(trip.scheduledTime),
+                                maxTextWidth: 72,
                               ),
-                            _CompactInfoItem(
-                              icon: Icons.schedule_rounded,
-                              text: _formatTime(trip.scheduledTime),
-                              maxTextWidth: 72,
-                            ),
-                            if (trip.wasteType.name.isNotEmpty)
-                              _CompactInfoItem(
-                                icon: Icons.recycling_rounded,
-                                text: trip.wasteType.name,
-                                maxTextWidth: veryNarrow ? 92 : 128,
-                              ),
-                          ],
-                        ),
+                              if (trip.wasteType.name.isNotEmpty)
+                                _CompactInfoItem(
+                                  icon: Icons.recycling_rounded,
+                                  text: trip.wasteType.name,
+                                  maxTextWidth: veryNarrow ? 92 : 128,
+                                ),
+                            ],
+                          ),
                       ],
                     ),
                   ),
@@ -1054,6 +1166,63 @@ class _TripHeroCard extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Replaces the vehicle/time/waste-type row once a trip is Completed —
+/// what mattered while working the trip (schedule, vehicle) is no longer the
+/// headline; what the shift actually achieved is: weight collected and how
+/// long it took. Same icon+label language as [_CompactInfoItem] so it reads
+/// as the same card, not a different component bolted on.
+class _CompletedTripSummaryRow extends StatelessWidget {
+  const _CompletedTripSummaryRow({
+    required this.trip,
+    required this.veryNarrow,
+  });
+
+  final OperatorTripToday trip;
+  final bool veryNarrow;
+
+  String _formatDuration(Duration? d) {
+    if (d == null) return '—';
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    if (h > 0) return '${h}h ${m}m';
+    return '${m}m';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final weight = trip.totalCollectedWeightKg;
+    return Wrap(
+      spacing: 10,
+      runSpacing: 7,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        _CompactInfoItem(
+          icon: Icons.scale_rounded,
+          text: '${weight.toStringAsFixed(weight >= 10 ? 0 : 1)} kg',
+          maxTextWidth: 70,
+        ),
+        _CompactInfoItem(
+          icon: Icons.timer_outlined,
+          text: _formatDuration(trip.elapsed),
+          maxTextWidth: 64,
+        ),
+        if (trip.tripCount > 1)
+          _CompactInfoItem(
+            icon: Icons.replay_rounded,
+            text: 'Trip ${trip.tripCount}',
+            maxTextWidth: 68,
+          ),
+        if (trip.vehicle != null)
+          _CompactInfoItem(
+            icon: Icons.local_shipping_rounded,
+            text: trip.vehicle!.vehicleNo,
+            maxTextWidth: veryNarrow ? 76 : 100,
+          ),
+      ],
     );
   }
 }
@@ -1223,14 +1392,22 @@ class _QuickActionsRow extends StatelessWidget {
     required this.onOpenMap,
     required this.onScan,
     required this.onHistory,
+    this.scanDimmed = false,
   });
 
   final VoidCallback onOpenMap;
 
   /// Null when the selected trip is locked — the scanner is dimmed rather than
   /// removed, so the row keeps its shape and the driver sees the action exists.
+  /// Non-null-but-dimmed (see [scanDimmed]) when the trip hasn't been started:
+  /// tapping still does something (explains why) rather than looking broken.
   final VoidCallback? onScan;
   final VoidCallback onHistory;
+
+  /// True to grey the Scan tile out even though [onScan] is callable — used
+  /// for the "not started yet" case, where the tap opens an explainer rather
+  /// than the scanner itself.
+  final bool scanDimmed;
 
   @override
   Widget build(BuildContext context) {
@@ -1238,8 +1415,9 @@ class _QuickActionsRow extends StatelessWidget {
       required String iconAsset,
       required String label,
       required VoidCallback? onTap,
+      bool dimmed = false,
     }) {
-      final disabled = onTap == null;
+      final disabled = onTap == null || dimmed;
       return Expanded(
         child: InkWell(
           onTap: onTap,
@@ -1286,6 +1464,7 @@ class _QuickActionsRow extends StatelessWidget {
           iconAsset: 'assets/icons/scan.png',
           label: 'Scan',
           onTap: onScan,
+          dimmed: scanDimmed,
         ),
         const SizedBox(width: 10),
         action(
@@ -1307,6 +1486,7 @@ class _StopsTimeline extends StatelessWidget {
     required this.trip,
     required this.onChanged,
     this.locked = false,
+    this.notStarted = false,
   });
 
   final OperatorTripToday trip;
@@ -1316,10 +1496,17 @@ class _StopsTimeline extends StatelessWidget {
   /// is coming — but greyed and inert, matching the trip card above.
   final bool locked;
 
+  /// This IS the driver's trip, but Start hasn't been pressed yet. Renders
+  /// greyed like [locked], but each tile stays tappable so tapping shows the
+  /// "press Start first" explainer instead of doing nothing.
+  final bool notStarted;
+
   @override
   Widget build(BuildContext context) {
     final timeline = _buildTimeline(context);
-    return locked ? _LockedContent(child: timeline) : timeline;
+    if (locked) return _LockedContent(child: timeline);
+    if (notStarted) return _DimmedContent(child: timeline);
+    return timeline;
   }
 
   Widget _buildTimeline(BuildContext context) {
@@ -1358,6 +1545,7 @@ class _StopsTimeline extends StatelessWidget {
             isLast: i == stops.length - 1,
             isNext: i == nextIndex,
             onChanged: onChanged,
+            notStarted: notStarted,
           ),
       ],
     );
@@ -1371,6 +1559,7 @@ class _StopTile extends StatelessWidget {
     required this.isLast,
     required this.isNext,
     required this.onChanged,
+    this.notStarted = false,
   });
 
   final OperatorTripCollectionPoint stop;
@@ -1378,6 +1567,10 @@ class _StopTile extends StatelessWidget {
   final bool isLast;
   final bool isNext;
   final Future<void> Function() onChanged;
+
+  /// True while this trip has not been started yet — tapping shows the
+  /// "press Start first" explainer instead of opening weight entry.
+  final bool notStarted;
 
   @override
   Widget build(BuildContext context) {
@@ -1457,7 +1650,11 @@ class _StopTile extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 5),
               child: CaptainGlassCard(
-                onTap: done ? null : () => _openWeightEntry(context),
+                onTap: done
+                    ? null
+                    : (notStarted
+                        ? () => showStartRequiredSheet(context)
+                        : () => _openWeightEntry(context)),
                 tint: done
                     ? CaptainTheme.success
                     : (skipped || missed)
@@ -1634,6 +1831,7 @@ class _HouseholdTimeline extends StatelessWidget {
     required this.trip,
     required this.onChanged,
     this.locked = false,
+    this.notStarted = false,
   });
 
   final OperatorTripToday trip;
@@ -1643,10 +1841,17 @@ class _HouseholdTimeline extends StatelessWidget {
   /// trip is still open.
   final bool locked;
 
+  /// See [_StopsTimeline.notStarted] — visible, greyed, and still tappable
+  /// (shows the "press Start first" explainer) until the driver starts this
+  /// trip.
+  final bool notStarted;
+
   @override
   Widget build(BuildContext context) {
     final timeline = _buildTimeline(context);
-    return locked ? _LockedContent(child: timeline) : timeline;
+    if (locked) return _LockedContent(child: timeline);
+    if (notStarted) return _DimmedContent(child: timeline);
+    return timeline;
   }
 
   Widget _buildTimeline(BuildContext context) {
@@ -1685,6 +1890,7 @@ class _HouseholdTimeline extends StatelessWidget {
             isLast: i == stops.length - 1,
             isNext: i == nextIndex,
             onChanged: onChanged,
+            notStarted: notStarted,
           ),
       ],
     );
@@ -1699,6 +1905,7 @@ class _HouseholdTile extends StatelessWidget {
     required this.isLast,
     required this.isNext,
     required this.onChanged,
+    this.notStarted = false,
   });
 
   final OperatorTripHouseholdStop stop;
@@ -1707,6 +1914,10 @@ class _HouseholdTile extends StatelessWidget {
   final bool isLast;
   final bool isNext;
   final Future<void> Function() onChanged;
+
+  /// True while this trip has not been started yet — tapping shows the
+  /// "press Start first" explainer instead of opening the household sheet.
+  final bool notStarted;
 
   _StopTone get _tone {
     if (stop.isCollected) return _StopTone.collected;
@@ -1807,7 +2018,9 @@ class _HouseholdTile extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 5),
               child: CaptainGlassCard(
-                onTap: () => _openHouseholdCollection(context),
+                onTap: notStarted
+                    ? () => showStartRequiredSheet(context)
+                    : () => _openHouseholdCollection(context),
                 // green = collected · amber = collect later · red = not
                 // available · purple = pending/next.
                 tint: statusColor,

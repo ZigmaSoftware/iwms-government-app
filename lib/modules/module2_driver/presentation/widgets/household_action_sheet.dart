@@ -195,6 +195,9 @@ Future<bool> showHouseholdActionSheet(
       );
     }
     return true;
+  } on OperatorTripException catch (e) {
+    if (context.mounted) AppFlash.error(context, e.message);
+    return false;
   } catch (e) {
     if (context.mounted) AppFlash.error(context, 'Could not update: $e');
     return false;

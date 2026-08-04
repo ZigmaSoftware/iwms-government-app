@@ -5,7 +5,6 @@ import 'package:iwms_citizen_app/modules/module2_driver/presentation/theme/capta
 import 'package:iwms_citizen_app/modules/module3_operator/utils/attendance_blink_store.dart';
 
 const double kCaptainNavBarHeight = 68;
-const double kCaptainNavBarHorizontalPadding = 16;
 const double kCaptainNavBarRadius = 28;
 const double kCaptainHomeBottomClearance = 102;
 const double kCaptainMapBottomOverlayOffset = 74;
@@ -42,40 +41,42 @@ class CaptainNavBar extends StatelessWidget {
       topRight: Radius.circular(kCaptainNavBarRadius),
     );
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: kCaptainNavBarHorizontalPadding,
-      ),
-      child: ClipRRect(
-        borderRadius: borderRadius,
-        child: BackdropFilter(
-          // Keep the same frosted texture, but let the bar sit flush to the
-          // screen bottom instead of floating above it.
-          filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-          child: Container(
-            height: height + bottomInset,
-            padding: EdgeInsets.only(bottom: bottomInset),
-            decoration: BoxDecoration(
-              color: CaptainTheme.surface.withValues(alpha: dark ? 0.55 : 0.62),
-              borderRadius: borderRadius,
-              border: Border.all(
+    // Edge-to-edge: no side padding and no bottom gap, so the bar is anchored
+    // to the screen instead of floating as a card. Only the top corners are
+    // rounded, and only the top edge carries a border — the other three sides
+    // are off-screen. `bottomInset` is padding INSIDE the surface, so the glass
+    // reaches the physical bottom while the tabs stay clear of the gesture bar.
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: BackdropFilter(
+        // Keep the same frosted texture, but let the bar sit flush to the
+        // screen bottom instead of floating above it.
+        filter: ui.ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: Container(
+          height: height + bottomInset,
+          padding: EdgeInsets.only(bottom: bottomInset),
+          decoration: BoxDecoration(
+            color: CaptainTheme.surface.withValues(alpha: dark ? 0.55 : 0.62),
+            borderRadius: borderRadius,
+            border: Border(
+              top: BorderSide(
                 color: dark
                     ? Colors.white.withValues(alpha: 0.14)
                     : const Color(0xFF0B1220).withValues(alpha: 0.12),
                 width: 1,
               ),
-              // Empty in light mode — glass carries no shadow there.
-              boxShadow: CaptainTheme.elevatedShadow,
             ),
-            child: Row(
-              children: [
-                Expanded(child: _slot(0)),
-                Expanded(child: _slot(1)),
-                const SizedBox(width: 64), // gap under the hovering Scan FAB
-                Expanded(child: _slot(2)),
-                Expanded(child: _slot(3)),
-              ],
-            ),
+            // Empty in light mode — glass carries no shadow there.
+            boxShadow: CaptainTheme.elevatedShadow,
+          ),
+          child: Row(
+            children: [
+              Expanded(child: _slot(0)),
+              Expanded(child: _slot(1)),
+              const SizedBox(width: 64), // gap under the hovering Scan FAB
+              Expanded(child: _slot(2)),
+              Expanded(child: _slot(3)),
+            ],
           ),
         ),
       ),

@@ -13,7 +13,14 @@ import 'package:iwms_citizen_app/data/repositories/staff_notification_repository
 /// shared — uses its own neutral slate accent instead of inheriting the
 /// app-root green theme.
 class StaffNotificationsScreen extends StatefulWidget {
-  const StaffNotificationsScreen({super.key});
+  const StaffNotificationsScreen({super.key, this.onOpenNotification});
+
+  /// Optional per-role deep link. Called after the tap is marked read; the
+  /// screen itself stays role-agnostic, so each app decides which types are
+  /// actionable (e.g. the supervisor opens a Re-Trip review, the driver has
+  /// nothing to open). Return `true` if the notification was handled.
+  final Future<bool> Function(StaffNotification notification)?
+      onOpenNotification;
 
   @override
   State<StaffNotificationsScreen> createState() =>
@@ -84,28 +91,38 @@ class _StaffNotificationsScreenState extends State<StaffNotificationsScreen> {
   }
 
   Future<void> _onTapNotification(StaffNotification n) async {
-    if (n.isRead) return;
-    try {
-      await _repo.markRead(n.uniqueId);
-      if (!mounted) return;
-      setState(() {
-        _notifications = _notifications
-            .map((existing) => existing.uniqueId == n.uniqueId
-                ? StaffNotification(
-                    uniqueId: existing.uniqueId,
-                    notificationType: existing.notificationType,
-                    title: existing.title,
-                    message: existing.message,
-                    data: existing.data,
-                    isRead: true,
-                    createdAt: existing.createdAt,
-                  )
-                : existing)
-            .toList();
-      });
-    } catch (_) {
-      // Non-fatal — leave as unread locally if the request failed.
+    // Mark read only when it isn't already — but ALWAYS fall through to the
+    // deep link below, so re-opening a read notification still navigates.
+    if (!n.isRead) {
+      try {
+        await _repo.markRead(n.uniqueId);
+        if (!mounted) return;
+        setState(() {
+          _notifications = _notifications
+              .map((existing) => existing.uniqueId == n.uniqueId
+                  ? StaffNotification(
+                      uniqueId: existing.uniqueId,
+                      notificationType: existing.notificationType,
+                      title: existing.title,
+                      message: existing.message,
+                      data: existing.data,
+                      isRead: true,
+                      createdAt: existing.createdAt,
+                    )
+                  : existing)
+              .toList();
+        });
+      } catch (_) {
+        // Non-fatal — leave as unread locally if the request failed.
+      }
     }
+
+    final handler = widget.onOpenNotification;
+    if (handler == null || !mounted) return;
+    final handled = await handler(n);
+    // The target may have changed server state (a Re-Trip decision ends one
+    // trip and opens another), so refresh the feed.
+    if (handled && mounted) await _load();
   }
 
   IconData _iconFor(String type) {
@@ -120,6 +137,12 @@ class _StaffNotificationsScreenState extends State<StaffNotificationsScreen> {
         return Icons.groups_rounded;
       case 'TEAM_SUBSTITUTED':
         return Icons.swap_horiz_rounded;
+      case 'RETRIP_REQUESTED':
+        return Icons.hourglass_top_rounded;
+      case 'RETRIP_APPROVED':
+        return Icons.check_circle_rounded;
+      case 'RETRIP_REJECTED':
+        return Icons.cancel_rounded;
       default:
         return Icons.notifications_rounded;
     }

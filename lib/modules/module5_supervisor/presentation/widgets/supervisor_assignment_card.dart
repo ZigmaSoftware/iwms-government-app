@@ -113,10 +113,20 @@ class SupervisorAssignmentCard extends StatelessWidget {
                       const SizedBox(height: 10),
                       _progressRow(),
                     ],
+                    if (assignment.isCompleted) ...[
+                      const SizedBox(height: 8),
+                      _completedDetailRow(),
+                    ],
                   ],
                 ),
               ),
-              if (onNavigate != null || onActions != null) _buttonRow(),
+              // A completed trip has nothing left to navigate to or act on —
+              // the buttons disappear entirely (rather than showing disabled)
+              // so the card reads as a finished record, matching the driver
+              // app's own completed-trip card.
+              if (!assignment.isCompleted &&
+                  (onNavigate != null || onActions != null))
+                _buttonRow(),
             ],
           ),
         ),
@@ -289,6 +299,44 @@ class SupervisorAssignmentCard extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  /// Second row, only for a Completed trip: how long the shift actually took
+  /// and — when this was a Re-Trip continuation of an earlier attempt that
+  /// day — which attempt this is. Same pill language as [_progressPill] so it
+  /// reads as one card, not a bolted-on section.
+  Widget _completedDetailRow() {
+    return Row(
+      children: [
+        Expanded(
+          child: _progressPill(
+            icon: Icons.timer_outlined,
+            color: SupervisorTheme.accent,
+            label: 'Trip time',
+            value: _formatDuration(assignment.totalTripTimeSeconds),
+          ),
+        ),
+        if (assignment.tripCount > 1) ...[
+          const SizedBox(width: 8),
+          Expanded(
+            child: _progressPill(
+              icon: Icons.replay_rounded,
+              color: SupervisorTheme.warning,
+              label: 'Attempt',
+              value: 'Trip ${assignment.tripCount}',
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  String _formatDuration(int? totalSeconds) {
+    if (totalSeconds == null) return '—';
+    final hours = totalSeconds ~/ 3600;
+    final minutes = (totalSeconds % 3600) ~/ 60;
+    if (hours > 0) return '${hours}h ${minutes}m';
+    return '${minutes}m';
   }
 
   Widget _progressPill({

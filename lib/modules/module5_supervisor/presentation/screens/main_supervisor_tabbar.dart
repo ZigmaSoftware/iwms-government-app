@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import 'package:iwms_citizen_app/core/di.dart';
+import 'package:iwms_citizen_app/core/push/pending_notification_tap.dart';
 import 'package:iwms_citizen_app/logic/auth/auth_bloc.dart';
 import 'package:iwms_citizen_app/logic/auth/auth_event.dart';
 import 'package:iwms_citizen_app/logic/auth/auth_state.dart';
@@ -13,6 +14,7 @@ import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens
     as attendance;
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_home_page.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_profile_screen.dart';
+import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_retrip_review_screen.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_trips_screen.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/theme/supervisor_theme.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_animated_nav_bar.dart';
@@ -57,6 +59,51 @@ class _SupervisorShellState extends State<_SupervisorShell> {
   ];
 
   late SupervisorNavTab _activeTab = widget.initialTab;
+
+  @override
+  void initState() {
+    super.initState();
+    // Drain a push tap that arrived before this shell existed (app opened from
+    // background or from terminated), then keep listening for later taps.
+    PendingNotificationTap.pending.addListener(_handlePendingTap);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _handlePendingTap());
+  }
+
+  @override
+  void dispose() {
+    PendingNotificationTap.pending.removeListener(_handlePendingTap);
+    super.dispose();
+  }
+
+  /// A tapped Re-Trip push lands the supervisor on the Trips tab (where the
+  /// pinned request banner lives) and opens the review screen directly.
+  Future<void> _handlePendingTap() async {
+    final data = PendingNotificationTap.pending.value;
+    if (data == null || !mounted) return;
+
+    final type = data['type']?.toString() ?? '';
+    if (!type.startsWith('RETRIP_')) return;
+
+    // Claim it before awaiting so a rebuild can't double-handle it.
+    PendingNotificationTap.take();
+
+    _setTab(SupervisorNavTab.trips);
+    // Always refresh: an approval/rejection notification means the list the
+    // supervisor is looking at is already stale.
+    context.read<SupervisorBloc>().add(const SupervisorRefreshRequested());
+
+    // Only a REQUESTED push has something to decide; approved/rejected are
+    // informational (and are the driver's notifications anyway).
+    if (type != 'RETRIP_REQUESTED') return;
+
+    final decided = await openSupervisorRetripFromNotification(
+      context,
+      retripRequestId: data['retrip_request_id']?.toString(),
+    );
+    if (decided && mounted) {
+      context.read<SupervisorBloc>().add(const SupervisorRefreshRequested());
+    }
+  }
 
   void _setTab(SupervisorNavTab tab) {
     if (_activeTab == tab) return;
@@ -135,14 +182,23 @@ class _SupervisorShellState extends State<_SupervisorShell> {
   Widget build(BuildContext context) {
     final name = _identityName();
 
+    // Pending Re-Trip requests badge the Trips slot — a driver is blocked
+    // waiting on the decision, so it must be visible from any tab.
+    final pendingRetrips = context
+        .watch<SupervisorBloc>()
+        .state
+        .pendingRetripRequests
+        .length;
+
     final navItems = <SupervisorNavItem>[
       const SupervisorNavItem(
         icon: Icons.dashboard_rounded,
         label: 'Dashboard',
       ),
-      const SupervisorNavItem(
+      SupervisorNavItem(
         icon: Icons.local_shipping_rounded,
         label: 'Trips',
+        badgeCount: pendingRetrips,
       ),
       const SupervisorNavItem(
         icon: Icons.fingerprint_rounded,

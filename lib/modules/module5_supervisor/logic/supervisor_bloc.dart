@@ -33,6 +33,12 @@ class SupervisorState {
   final List<SupervisorAssignment> assignments;
   final SupervisorKpis kpis;
   final List<SupervisorAlert> alerts;
+
+  /// Drivers waiting on this supervisor to decide whether the leftover stops
+  /// of a cut-short trip carry over to a new one. Drives the pinned banner in
+  /// the Trips tab and the badge on its bottom-nav slot.
+  final List<SupervisorRetripRequest> retripRequests;
+
   final String? errorMessage;
 
   const SupervisorState({
@@ -41,6 +47,7 @@ class SupervisorState {
     this.assignments = const [],
     this.kpis = SupervisorKpis.empty,
     this.alerts = const [],
+    this.retripRequests = const [],
     this.errorMessage,
   });
 
@@ -50,6 +57,7 @@ class SupervisorState {
     List<SupervisorAssignment>? assignments,
     SupervisorKpis? kpis,
     List<SupervisorAlert>? alerts,
+    List<SupervisorRetripRequest>? retripRequests,
     String? errorMessage,
   }) {
     return SupervisorState(
@@ -58,9 +66,14 @@ class SupervisorState {
       assignments: assignments ?? this.assignments,
       kpis: kpis ?? this.kpis,
       alerts: alerts ?? this.alerts,
+      retripRequests: retripRequests ?? this.retripRequests,
       errorMessage: errorMessage,
     );
   }
+
+  /// Only the still-undecided requests — the ones the supervisor must act on.
+  List<SupervisorRetripRequest> get pendingRetripRequests =>
+      retripRequests.where((r) => r.isPending).toList();
 
   List<SupervisorAssignment> get inProgress =>
       assignments.where((a) => a.isInProgress).toList();
@@ -167,6 +180,15 @@ class SupervisorBloc extends Bloc<SupervisorEvent, SupervisorState> {
     final kpis = SupervisorKpis.fromAssignments(assignments);
     final alerts = SupervisorAlert.fromAssignments(assignments);
 
+    // Best-effort: a Re-Trip fetch failure must not blank the trips list, so
+    // keep whatever was already loaded rather than failing the whole state.
+    List<SupervisorRetripRequest> retrips;
+    try {
+      retrips = await _repo.fetchRetripRequests();
+    } catch (_) {
+      retrips = state.retripRequests;
+    }
+
     emit(state.copyWith(
       status:
           assignments.isEmpty ? SupervisorStatus.empty : SupervisorStatus.ready,
@@ -174,6 +196,7 @@ class SupervisorBloc extends Bloc<SupervisorEvent, SupervisorState> {
       assignments: assignments,
       kpis: kpis,
       alerts: alerts,
+      retripRequests: retrips,
     ));
   }
 }

@@ -129,6 +129,14 @@ class ApiConfig {
       '${desktopBase}operator-mobile/scan-bin/';
   static const String operatorTripHistory =
       '${desktopBase}operator-mobile/trip-history/';
+  // Explicit trip start / end. `end` does NOT always end the trip: with stops
+  // still pending it raises a Re-Trip request for a supervisor to decide.
+  static const String operatorTripLifecycle =
+      '${desktopBase}operator-mobile/trip-lifecycle/';
+  static String operatorTripStart(String assignmentId) =>
+      '$operatorTripLifecycle$assignmentId/start/';
+  static String operatorTripEnd(String assignmentId) =>
+      '$operatorTripLifecycle$assignmentId/end/';
 
   // ORS key is sourced from build-time env (`VITE_ORS_API_KEY`).
   static const String orsApiKey = kOrsApiKey;

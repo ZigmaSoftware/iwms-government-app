@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:iwms_citizen_app/core/api_config.dart';
 import 'package:iwms_citizen_app/core/push/push_notification_service.dart';
 import 'package:iwms_citizen_app/core/ui/app_flash.dart';
+import 'package:iwms_citizen_app/data/models/staff_notification_models.dart';
 import 'package:iwms_citizen_app/data/repositories/staff_notification_repository.dart';
 import 'package:iwms_citizen_app/data/repositories/vehicle_breakdown_repository.dart';
 import 'package:iwms_citizen_app/modules/module1_citizen/citizen/map.dart';
@@ -13,6 +14,7 @@ import 'package:iwms_citizen_app/modules/module5_supervisor/data/supervisor_mode
 import 'package:iwms_citizen_app/modules/module5_supervisor/data/supervisor_grievance_repository.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/data/supervisor_repository.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_history_screen.dart';
+import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_retrip_review_screen.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_households_screen.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_staff_attendance_screen.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_staff_screen.dart';
@@ -100,9 +102,31 @@ class _SupervisorHomePageState extends State<SupervisorHomePage> {
 
   Future<void> _openNotifications() async {
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const StaffNotificationsScreen()),
+      MaterialPageRoute(
+        builder: (_) => StaffNotificationsScreen(
+          onOpenNotification: _openNotificationTarget,
+        ),
+      ),
     );
     _loadUnreadNotificationCount();
+  }
+
+  /// Deep link a tapped notification to the screen that can act on it.
+  /// Currently only Re-Trip requests are actionable for a supervisor.
+  Future<bool> _openNotificationTarget(StaffNotification n) async {
+    if (!n.notificationType.startsWith('RETRIP_')) return false;
+
+    final requestId = n.data['retrip_request_id']?.toString();
+    final decided = await openSupervisorRetripFromNotification(
+      context,
+      retripRequestId: requestId,
+    );
+    if (decided && mounted) {
+      context.read<SupervisorBloc>().add(const SupervisorRefreshRequested());
+    }
+    // Handled either way — an already-decided request still shows its own
+    // explanation rather than falling through as "not actionable".
+    return true;
   }
 
   Future<void> _loadGrievanceCount() async {

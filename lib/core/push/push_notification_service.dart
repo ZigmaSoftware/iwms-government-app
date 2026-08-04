@@ -6,6 +6,7 @@ import 'package:iwms_citizen_app/core/api_config.dart';
 import 'package:iwms_citizen_app/core/di.dart';
 import 'package:iwms_citizen_app/core/network/auth_dio.dart';
 import 'package:iwms_citizen_app/core/network/auth_token_provider.dart';
+import 'package:iwms_citizen_app/core/push/pending_notification_tap.dart';
 import 'package:iwms_citizen_app/shared/services/notification_service.dart';
 
 /// Instant, backend-triggered push notifications for the citizen app — e.g.
@@ -60,6 +61,18 @@ class PushNotificationService {
         getIt<NotificationService>()
             .showAssignmentNotification(title: title, message: body);
       });
+
+      // Tapped while the app was backgrounded.
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        PendingNotificationTap.record(message.data);
+      });
+
+      // Tapped while the app was terminated — this is the launch message, so
+      // it must be read once at startup or the tap is lost entirely.
+      final initial = await messaging.getInitialMessage();
+      if (initial != null) {
+        PendingNotificationTap.record(initial.data);
+      }
     } catch (e, st) {
       debugPrint('[push] initAndRegister failed (non-fatal): $e\n$st');
     }

@@ -4,8 +4,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/data/supervisor_models.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/logic/supervisor_bloc.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/theme/supervisor_theme.dart';
+import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_retrip_review_screen.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/screens/supervisor_trip_map_screen.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_assignment_card.dart';
+import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_retrip_card.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_assignment_detail_sheet.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_state_views.dart';
 import 'package:iwms_citizen_app/modules/module5_supervisor/presentation/widgets/supervisor_trip_actions_sheet.dart';
@@ -48,6 +50,13 @@ class _SupervisorTripsScreenState extends State<SupervisorTripsScreen> {
               return Column(
                 children: [
                   _topBar(),
+                  // Pinned above the filters: a driver is parked waiting on
+                  // this decision, so it must be visible regardless of which
+                  // filter is active or whether any trips loaded.
+                  SupervisorRetripRequestsPanel(
+                    requests: state.pendingRetripRequests,
+                    onReview: (request) => _openReview(context, request),
+                  ),
                   _filterChips(state),
                   Expanded(child: _buildBody(context, state)),
                 ],
@@ -57,6 +66,19 @@ class _SupervisorTripsScreenState extends State<SupervisorTripsScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _openReview(
+    BuildContext context,
+    SupervisorRetripRequest request,
+  ) async {
+    final bloc = context.read<SupervisorBloc>();
+    final decided = await SupervisorRetripReviewScreen.push(context, request);
+    // A decision creates/ends assignments, so reload rather than patching the
+    // list locally.
+    if (decided == true) {
+      bloc.add(const SupervisorRefreshRequested());
+    }
   }
 
   Widget _topBar() {

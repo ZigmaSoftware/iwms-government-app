@@ -222,8 +222,99 @@ class OperatorTripCollectionPoint {
   }
 }
 
-/// A household stop (customer) on a household / bulk-waste trip. The driver
-/// collects each household directly (weight capture) instead of scanning a bin.
+/// A driver's pending request to close a trip that still has stops, awaiting a
+/// supervisor's decision. Present on the trip payload only while `Pending`.
+class OperatorTripRetripRequest {
+  final String uniqueId;
+  final String status;
+  final String reason;
+  final int pendingBinCount;
+  final int pendingHouseholdCount;
+  final DateTime? createdAt;
+
+  const OperatorTripRetripRequest({
+    required this.uniqueId,
+    required this.status,
+    required this.reason,
+    this.pendingBinCount = 0,
+    this.pendingHouseholdCount = 0,
+    this.createdAt,
+  });
+
+  int get pendingTotal => pendingBinCount + pendingHouseholdCount;
+
+  factory OperatorTripRetripRequest.fromJson(Map<String, dynamic> json) =>
+      OperatorTripRetripRequest(
+        uniqueId: json['unique_id']?.toString() ?? '',
+        status: json['status']?.toString() ?? 'Pending',
+        reason: json['reason']?.toString() ?? '',
+        pendingBinCount: _parseInt(json['pending_bin_count']) ?? 0,
+        pendingHouseholdCount: _parseInt(json['pending_household_count']) ?? 0,
+        createdAt: _parseDate(json['created_at']),
+      );
+}
+
+/// Result of `OperatorTripRepository.endTrip`. Three distinct outcomes, none
+/// of which are exceptions — ending a trip with stops left is an expected,
+/// guided flow, not an error:
+///   1. `ended` — nothing was pending, the trip is now Completed.
+///   2. `retripRequested` — stops were pending and a reason was supplied; a
+///      `TripRetripRequest` now awaits the supervisor.
+///   3. `reasonRequired` — stops are pending and no reason was given yet; the
+///      caller should show the mandatory-reason prompt and call `endTrip`
+///      again with it.
+class OperatorTripEndResult {
+  final bool ended;
+  final bool retripRequested;
+  final bool reasonRequired;
+  final int pendingBinCount;
+  final int pendingHouseholdCount;
+  final OperatorTripRetripRequest? retripRequest;
+  final OperatorTripToday? trip;
+
+  const OperatorTripEndResult({
+    required this.ended,
+    required this.retripRequested,
+    required this.reasonRequired,
+    this.pendingBinCount = 0,
+    this.pendingHouseholdCount = 0,
+    this.retripRequest,
+    this.trip,
+  });
+
+  int get pendingTotal => pendingBinCount + pendingHouseholdCount;
+
+  factory OperatorTripEndResult.reasonRequired({
+    required int pendingBinCount,
+    required int pendingHouseholdCount,
+  }) =>
+      OperatorTripEndResult(
+        ended: false,
+        retripRequested: false,
+        reasonRequired: true,
+        pendingBinCount: pendingBinCount,
+        pendingHouseholdCount: pendingHouseholdCount,
+      );
+
+  factory OperatorTripEndResult.fromJson(Map<String, dynamic> json) {
+    final retripJson = json['retrip_request'];
+    final tripJson = json['trip'];
+    return OperatorTripEndResult(
+      ended: json['ended'] == true,
+      retripRequested: json['retrip_requested'] == true,
+      reasonRequired: false,
+      retripRequest: retripJson is Map
+          ? OperatorTripRetripRequest.fromJson(
+              Map<String, dynamic>.from(retripJson),
+            )
+          : null,
+      trip: tripJson is Map
+          ? OperatorTripToday.fromJson(Map<String, dynamic>.from(tripJson))
+          : null,
+    );
+  }
+}
+
 /// One waste stream saved against a customer in Customer Creation, as served by
 /// `waste/get-waste-types/?customer_id=…`. This is what the household *should*
 /// be handing over, so the driver can check the segregation before collecting.
@@ -346,6 +437,18 @@ class OperatorTripToday {
   final String? scheduledTime;
   final String? actualStartTime;
   final String? actualEndTime;
+  // Authoritative timestamps — elapsed time is computed from these. The
+  // `*Time` strings above are wall-clock only (no date), so they can't be
+  // subtracted safely across midnight.
+  final DateTime? actualStartAt;
+  final DateTime? actualEndAt;
+  // Set while a Re-Trip request awaits a supervisor: the trip is still In
+  // Progress but the driver has already asked to close it.
+  final OperatorTripRetripRequest? retripRequest;
+  // This assignment's 1-based position among today's assignments for the
+  // same trip plan — 1 normally, 2+ for a Re-Trip continuation. Not derivable
+  // client-side (needs sibling assignments), always comes from the server.
+  final int tripCount;
   // A trip is either panchayat- or ward-based; exactly one is set.
   final OperatorTripPanchayat? panchayat;
   final OperatorTripWard? ward;
@@ -387,6 +490,10 @@ class OperatorTripToday {
     this.scheduledTime,
     this.actualStartTime,
     this.actualEndTime,
+    this.actualStartAt,
+    this.actualEndAt,
+    this.retripRequest,
+    this.tripCount = 1,
     this.crew,
   });
 
@@ -414,6 +521,10 @@ class OperatorTripToday {
         scheduledTime: scheduledTime,
         actualStartTime: actualStartTime,
         actualEndTime: actualEndTime,
+        actualStartAt: actualStartAt,
+        actualEndAt: actualEndAt,
+        retripRequest: retripRequest,
+        tripCount: tripCount,
         crew: crew,
       );
 
@@ -435,6 +546,22 @@ class OperatorTripToday {
   /// the backend, so the app's lock and the scan endpoint agree.
   bool get isFinished =>
       status.toLowerCase() == 'completed' || progress.completed;
+
+  /// True once the driver has actually pressed start — as opposed to
+  /// `status == 'In Progress'`, which a supervisor/admin action can also set.
+  bool get isStarted => actualStartAt != null;
+
+  bool get hasPendingRetrip => retripRequest != null;
+
+  /// Elapsed time so far — from start to now if still running, else the full
+  /// start-to-end span. Null until the trip has actually been started.
+  Duration? get elapsed {
+    final start = actualStartAt;
+    if (start == null) return null;
+    final end = actualEndAt ?? DateTime.now();
+    final diff = end.difference(start);
+    return diff.isNegative ? Duration.zero : diff;
+  }
 
   /// `HH:mm` for the header/lock copy ("Finish your 06:30 trip first").
   String get scheduledTimeLabel {
@@ -458,14 +585,23 @@ class OperatorTripToday {
     }
   }
 
-  /// Total weight collected so far, summed from the per-collection-point
-  /// weights in today's payload. `my-trip-today` doesn't ship an aggregate
-  /// total, but each collected CP carries `collected_weight_kg`, so we derive
-  /// it here to match the history summary shape.
-  double get totalCollectedWeightKg => collectionPoints.fold<double>(
-        0.0,
-        (sum, cp) => sum + (cp.collectedWeightKg ?? 0.0),
-      );
+  /// Total weight collected so far, summed from the per-collection-point AND
+  /// per-household weights in today's payload. `my-trip-today` doesn't ship an
+  /// aggregate total, but each collected stop carries its own
+  /// `collected_weight_kg`, so we derive it here to match the history summary
+  /// shape. Household/bulk trips have no collection points at all, so
+  /// omitting their side previously always read as 0.0 kg for those trips.
+  double get totalCollectedWeightKg {
+    final binWeight = collectionPoints.fold<double>(
+      0.0,
+      (sum, cp) => sum + (cp.collectedWeightKg ?? 0.0),
+    );
+    final householdWeight = householdCollections.fold<double>(
+      0.0,
+      (sum, hh) => sum + (hh.collectedWeightKg ?? 0.0),
+    );
+    return binWeight + householdWeight;
+  }
 
   /// Adapt today's single-trip payload into the history *summary* shape the
   /// driver/operator screens already render. `my-trip-today` and trip-history
@@ -480,6 +616,8 @@ class OperatorTripToday {
       scheduledTime: scheduledTime,
       actualStartTime: actualStartTime,
       actualEndTime: actualEndTime,
+      actualStartAt: actualStartAt,
+      actualEndAt: actualEndAt,
       panchayat: panchayat,
       ward: ward,
       wasteType: wasteType,
@@ -488,6 +626,7 @@ class OperatorTripToday {
       progress: progress,
       totalWeightKg: totalCollectedWeightKg,
       collectionType: collectionType,
+      tripCount: tripCount,
     );
   }
 
@@ -518,6 +657,14 @@ class OperatorTripToday {
       scheduledTime: json['scheduled_time']?.toString(),
       actualStartTime: json['actual_start_time']?.toString(),
       actualEndTime: json['actual_end_time']?.toString(),
+      actualStartAt: _parseDate(json['actual_start_at']),
+      actualEndAt: _parseDate(json['actual_end_at']),
+      retripRequest: json['retrip_request'] is Map
+          ? OperatorTripRetripRequest.fromJson(
+              Map<String, dynamic>.from(json['retrip_request'] as Map),
+            )
+          : null,
+      tripCount: _parseInt(json['trip_count']) ?? 1,
       panchayat: json['panchayat'] is Map
           ? OperatorTripPanchayat.fromJson(
               Map<String, dynamic>.from(json['panchayat'] as Map),
@@ -837,6 +984,11 @@ class OperatorTripHistorySummary {
   final String? scheduledTime;
   final String? actualStartTime;
   final String? actualEndTime;
+  // Authoritative timestamps — used for duration whenever present. The bare
+  // `*Time` strings above have no date and (historically) mixed timezones, so
+  // they're kept only as a fallback for trips ended before these existed.
+  final DateTime? actualStartAt;
+  final DateTime? actualEndAt;
   final OperatorTripPanchayat? panchayat;
   final OperatorTripWard? ward;
   final OperatorTripWasteType wasteType;
@@ -846,6 +998,9 @@ class OperatorTripHistorySummary {
   final OperatorTripProgress progress;
   final double totalWeightKg;
   final String? remarks;
+  // This assignment's 1-based position among that day's assignments for the
+  // same trip plan — 1 normally, 2+ for a Re-Trip continuation.
+  final int tripCount;
 
   const OperatorTripHistorySummary({
     required this.assignmentUniqueId,
@@ -859,6 +1014,9 @@ class OperatorTripHistorySummary {
     this.scheduledTime,
     this.actualStartTime,
     this.actualEndTime,
+    this.actualStartAt,
+    this.actualEndAt,
+    this.tripCount = 1,
     this.panchayat,
     this.ward,
     this.vehicle,
@@ -893,8 +1051,16 @@ class OperatorTripHistorySummary {
     }
   }
 
-  /// Estimated duration if both start + end are known.
+  /// Trip duration, preferring the authoritative datetimes — they carry a
+  /// real date and timezone, so they're safe across midnight-crossing trips,
+  /// unlike the bare wall-clock `actual_start_time`/`actual_end_time`. Falls
+  /// back to the old time-only calc only for trips ended before the backend
+  /// started stamping `actual_start_at`/`actual_end_at`.
   Duration? get duration {
+    if (actualStartAt != null && actualEndAt != null) {
+      final diff = actualEndAt!.difference(actualStartAt!);
+      return diff.isNegative ? null : diff;
+    }
     final start = _timeToToday(actualStartTime, tripDate);
     final end = _timeToToday(actualEndTime, tripDate);
     if (start == null || end == null) return null;
@@ -912,6 +1078,8 @@ class OperatorTripHistorySummary {
       scheduledTime: json['scheduled_time']?.toString(),
       actualStartTime: json['actual_start_time']?.toString(),
       actualEndTime: json['actual_end_time']?.toString(),
+      actualStartAt: _parseDate(json['actual_start_at']),
+      actualEndAt: _parseDate(json['actual_end_at']),
       panchayat: json['panchayat'] is Map
           ? OperatorTripPanchayat.fromJson(
               Map<String, dynamic>.from(json['panchayat'] as Map),
@@ -945,6 +1113,7 @@ class OperatorTripHistorySummary {
         Map<String, dynamic>.from(json['progress'] as Map),
       ),
       totalWeightKg: _parseDouble(json['total_weight_kg']) ?? 0.0,
+      tripCount: _parseInt(json['trip_count']) ?? 1,
     );
   }
 }

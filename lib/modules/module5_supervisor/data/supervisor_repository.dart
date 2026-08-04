@@ -36,6 +36,8 @@ class SupervisorRepository {
   static const String _households = ApiConfig.customerList;
   static const String _alternativeStaffTemplates =
       '${ApiConfig.desktopBase}schedule-setup/alternative-staff-templates/';
+  static const String _retripRequests =
+      '${ApiConfig.desktopBase}schedule-operations/retrip-requests/';
 
   /// Fetch the requesting supervisor's authorised zone scope.
   ///
@@ -445,6 +447,90 @@ class SupervisorRepository {
       await dio.patch(
         '$_assignments$assignmentId/',
         data: {'alt_staff_template_id': altId},
+      );
+    } on DioException catch (e) {
+      throw SupervisorException(_message(e));
+    } catch (e) {
+      throw SupervisorException(e.toString());
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // RE-TRIP REQUESTS
+  // ------------------------------------------------------------------
+
+  /// Re-Trip requests raised by drivers on trips this supervisor owns.
+  ///
+  /// `mine=true` matches the assignments filter — the backend scopes to
+  /// `assignment__trip_plan_id__supervisor_id == me` — so this returns exactly
+  /// the requests the supervisor is responsible for deciding.
+  Future<List<SupervisorRetripRequest>> fetchRetripRequests({
+    String status = 'Pending',
+    bool mine = true,
+  }) async {
+    try {
+      final dio = await authorizedDio();
+      final res = await dio.get(_retripRequests, queryParameters: {
+        if (status.isNotEmpty) 'status': status,
+        if (mine) 'mine': 'true',
+      });
+      return _rawList(res.data).map(SupervisorRetripRequest.fromJson).toList();
+    } on DioException catch (e) {
+      throw SupervisorException(_message(e));
+    } catch (e) {
+      throw SupervisorException(e.toString());
+    }
+  }
+
+  /// Approve a Re-Trip request: ends the old trip and opens a continuation
+  /// carrying the leftover work. Returns the new assignment's id.
+  ///
+  /// [collectionPointIds] are DAILY stop ids the supervisor ticked, and apply
+  /// to BIN trips only. Pass null for a household/bulk trip, where every
+  /// remaining household carries over automatically — sending an empty list
+  /// there would read as "carry nothing".
+  Future<String?> approveRetripRequest(
+    String requestId, {
+    List<String>? collectionPointIds,
+    String? remarks,
+  }) async {
+    try {
+      final dio = await authorizedDio();
+      final res = await dio.post(
+        '$_retripRequests$requestId/approve/',
+        data: {
+          if (collectionPointIds != null)
+            'collection_point_ids': collectionPointIds,
+          if (remarks != null && remarks.trim().isNotEmpty)
+            'remarks': remarks.trim(),
+        },
+      );
+      final data = res.data;
+      if (data is Map && data['new_assignment_id'] != null) {
+        return data['new_assignment_id'].toString();
+      }
+      return null;
+    } on DioException catch (e) {
+      throw SupervisorException(_message(e));
+    } catch (e) {
+      throw SupervisorException(e.toString());
+    }
+  }
+
+  /// Decline a Re-Trip request — the trip stays In Progress and the driver is
+  /// notified to continue the remaining stops.
+  Future<void> rejectRetripRequest(
+    String requestId, {
+    String? remarks,
+  }) async {
+    try {
+      final dio = await authorizedDio();
+      await dio.post(
+        '$_retripRequests$requestId/reject/',
+        data: {
+          if (remarks != null && remarks.trim().isNotEmpty)
+            'remarks': remarks.trim(),
+        },
       );
     } on DioException catch (e) {
       throw SupervisorException(_message(e));
