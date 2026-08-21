@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 
 /// Environment-style flags for build-time configuration.
 /// Set via `--dart-define` when running or building:
-///   flutter run --dart-define=VITE_PROD=true --dart-define=VITE_ENFORCE_PERMISSIONS=false --dart-define=VITE_GOVERNMENT_API_LOCAL=http://192.168.3.120:8000/api/v1
+///   flutter run --dart-define=VITE_PROD=true --dart-define=VITE_ENFORCE_PERMISSIONS=false --dart-define=VITE_GOVERNMENT_API_LOCAL=http://115.245.93.26:9001/api/v1
 const bool kProd = bool.fromEnvironment(
   'VITE_PROD',
   defaultValue: kReleaseMode,
@@ -10,12 +10,12 @@ const bool kProd = bool.fromEnvironment(
 const bool kEnforcePermissions =
     bool.fromEnvironment('VITE_ENFORCE_PERMISSIONS', defaultValue: true);
 
-const String _defaultGovernmentApiBase = 'http://192.168.3.120:8000/api/v1';
-const String _defaultGovernmentBackendOrigin = 'http://192.168.3.120:8000';
+const String _defaultGovernmentApiBase = 'http://115.245.93.26:9001/api/v1';
+const String _defaultGovernmentBackendOrigin = 'http://115.245.93.26:9001';
 
 // Override the government backend bases via dart-define if needed.
 const String _localApiOverride = String.fromEnvironment(
-  'VITE_GOVERNMENT_API_LOCAL', 
+  'VITE_GOVERNMENT_API_LOCAL',
   defaultValue: _defaultGovernmentApiBase,
 );
 const String _prodApiOverride = String.fromEnvironment(
