@@ -335,6 +335,23 @@ class CustomerWasteType {
   String get key => name.toLowerCase();
 }
 
+/// One waste-type row in a household stop's collection breakdown — e.g.
+/// "Wet Waste, 3.5 kg". Shown in the "eye" floating window on a collected
+/// household tile.
+class WasteBreakdownEntry {
+  final String wasteType;
+  final double weightKg;
+
+  const WasteBreakdownEntry({required this.wasteType, required this.weightKg});
+
+  factory WasteBreakdownEntry.fromJson(Map<String, dynamic> json) {
+    return WasteBreakdownEntry(
+      wasteType: json['waste_type']?.toString() ?? 'Waste',
+      weightKg: _parseDouble(json['weight_kg']) ?? 0,
+    );
+  }
+}
+
 class OperatorTripHouseholdStop {
   final String uniqueId;
   final int sequence;
@@ -350,6 +367,12 @@ class OperatorTripHouseholdStop {
   final double? latitude;
   final double? longitude;
 
+  /// Per-waste-type split of [collectedWeightKg] — empty until collected,
+  /// and possibly still empty even once collected (a legacy row that never
+  /// went through the waste-type-split flow). See the "eye" button on
+  /// [_HouseholdTile] in captain_home_tab.dart.
+  final List<WasteBreakdownEntry> wasteBreakdown;
+
   const OperatorTripHouseholdStop({
     required this.uniqueId,
     required this.sequence,
@@ -364,6 +387,7 @@ class OperatorTripHouseholdStop {
     this.address,
     this.latitude,
     this.longitude,
+    this.wasteBreakdown = const [],
   });
 
   factory OperatorTripHouseholdStop.fromJson(Map<String, dynamic> json) {
@@ -384,6 +408,11 @@ class OperatorTripHouseholdStop {
       address: customer['address']?.toString(),
       latitude: _parseDouble(customer['latitude']),
       longitude: _parseDouble(customer['longitude']),
+      wasteBreakdown: (json['waste_breakdown'] as List? ?? const [])
+          .map((e) => WasteBreakdownEntry.fromJson(
+                Map<String, dynamic>.from(e as Map),
+              ))
+          .toList(),
     );
   }
 }

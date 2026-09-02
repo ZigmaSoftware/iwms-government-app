@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:iwms_citizen_app/core/env.dart';
 import 'package:iwms_citizen_app/core/ui/app_copy.dart';
 import 'package:iwms_citizen_app/core/ui/app_flash.dart';
+import 'package:iwms_citizen_app/modules/module3_operator/services/bluetoothservices.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../../core/di.dart';
@@ -186,6 +187,16 @@ class _DriverHomePageState extends State<DriverHomePage> {
     unawaited(PushNotificationService.instance.initAndRegister(
       registerUrl: ApiConfig.registerStaffFcmToken,
     ));
+    // Start the weigh-scale connection here, once, for the whole driver
+    // session — NOT inside household_collect_sheet.dart. That used to be the
+    // only place anything ever tried to connect, so a drop (out of range for
+    // a moment, the phone's Bluetooth stack idling, the module resetting)
+    // left the scale disconnected until the driver happened to reopen a
+    // collect sheet, which then had to ask them to connect again.
+    // BluetoothService now owns its own reconnect (including on app resume),
+    // so by the time any collect sheet opens the scale is normally already
+    // connected — the sheet only subscribes to it, it doesn't (re)connect it.
+    unawaited(BluetoothService().ensureConnected());
     _refreshUnreadNotificationCount();
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _centerOnDriver(GammaGeofenceConfig.center),

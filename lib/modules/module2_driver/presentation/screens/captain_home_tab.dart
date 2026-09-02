@@ -16,6 +16,7 @@ import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/cap
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/captain_nav_bar.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/collection_progress_meter.dart';
 import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/trip_lifecycle_control.dart';
+import 'package:iwms_citizen_app/modules/module2_driver/presentation/widgets/waste_breakdown_window.dart';
 import 'package:iwms_citizen_app/shared/widgets/crew_avatar_stack.dart';
 
 /// Captain Home — the "today-first" dashboard of the merged driver app.
@@ -1726,7 +1727,23 @@ class _StopTile extends StatelessWidget {
                         ],
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 4),
+                    // Eye button — opens the waste-type breakdown for this
+                    // collection. Only meaningful once collected; a bin has
+                    // exactly one waste type, so the "list" is a single row.
+                    if (done)
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints(),
+                        padding: const EdgeInsets.all(4),
+                        onPressed: () => _showBreakdown(context),
+                        icon: Icon(
+                          Icons.visibility_outlined,
+                          size: 19,
+                          color: CaptainTheme.mutedText,
+                        ),
+                      ),
+                    const SizedBox(width: 4),
                     Icon(
                       done
                           ? Icons.verified_rounded
@@ -1747,6 +1764,17 @@ class _StopTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  void _showBreakdown(BuildContext context) {
+    final wasteTypeName = stop.bin.wasteType?.name ?? 'Waste';
+    final weight = stop.collectedWeightKg ?? 0;
+    showWasteBreakdownWindow(
+      context,
+      title: stop.collectionPoint.name,
+      subtitle: stop.bin.binName,
+      rows: [WasteBreakdownRow(wasteType: wasteTypeName, weightKg: weight)],
     );
   }
 
@@ -2070,7 +2098,23 @@ class _HouseholdTile extends StatelessWidget {
                         ],
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 4),
+                    // Eye button — opens the per-waste-type breakdown for
+                    // this collection (Wet/Dry/... kg). Only meaningful once
+                    // collected.
+                    if (done)
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints(),
+                        padding: const EdgeInsets.all(4),
+                        onPressed: () => _showBreakdown(context),
+                        icon: Icon(
+                          Icons.visibility_outlined,
+                          size: 19,
+                          color: CaptainTheme.mutedText,
+                        ),
+                      ),
+                    const SizedBox(width: 4),
                     Icon(
                       done
                           ? Icons.verified_rounded
@@ -2087,6 +2131,27 @@ class _HouseholdTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  void _showBreakdown(BuildContext context) {
+    final rows = stop.wasteBreakdown
+        .map((e) => WasteBreakdownRow(wasteType: e.wasteType, weightKg: e.weightKg))
+        .toList();
+    // A legacy collection with no per-type split recorded still has the
+    // combined total — fall back to a single "Waste Collected" row rather
+    // than showing an empty window for a genuinely collected stop.
+    if (rows.isEmpty && stop.collectedWeightKg != null) {
+      rows.add(WasteBreakdownRow(
+        wasteType: 'Waste Collected',
+        weightKg: stop.collectedWeightKg!,
+      ));
+    }
+    showWasteBreakdownWindow(
+      context,
+      title: stop.customerName,
+      subtitle: stop.address ?? 'Household ${stop.sequence}',
+      rows: rows,
     );
   }
 
